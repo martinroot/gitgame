@@ -80,6 +80,7 @@ def main():
         '- `web/api/*.php` — DV-merchant crypto billing: cart checkout, webhook, order status, account recovery and paid source downloads',
         '- `scripts/gen_readme_catalog.py` — regenerate this README from catalog data',
         '- `scripts/repair_catalog_thumbs.py` — restore missing catalog thumb paths from site JPEGs',
+        '- `scripts/preflight_gitgame.py` — fail when a rated game has no thumbnail; run after every deploy',
         '',
         'Regenerate with `python3 scripts/gen_readme_catalog.py`. Paths can be overridden via `CATALOG_JSON`, `RATINGS_JSON`, `PRICES_JSON`, `SITE_THUMBS`. Secrets come from the environment (`FAPA_PASS`, `GITHUB_TOKEN`) and are not stored in this repo.',
         '',
