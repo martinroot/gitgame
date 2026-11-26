@@ -45,6 +45,7 @@ def main():
     prices = json.load(open(PRICES)) if os.path.exists(PRICES) else {}
     en_desc = json.load(open(ROOT / 'data/descriptions_en.json'))
     rows = []
+    missing = []
     for g in games:
         slug = (g.get('slug') or '').strip()
         if not slug or slug not in ratings:
@@ -52,9 +53,13 @@ def main():
         stars = max(0, min(5, int(ratings[slug])))
         price = float(prices.get(slug, {5: 1.50, 4: 1.00, 3: 0.70, 2: 0.30, 1: 0.10}.get(stars, 0.30)))
         image = image_url(slug, g.get('thumb') or '', THUMBS)
+        if image is None:
+            missing.append(slug)
         desc = en_desc.get(slug) or g.get('desc') or ''
         rows.append((stars, price, g.get('title') or slug, slug, short(desc),
                      g.get('source') or '', image))
+    if missing:
+        raise SystemExit('missing thumbnails: ' + ', '.join(missing))
     rows.sort(key=lambda r: (-r[0], -r[1], r[2]))
 
     out = [
@@ -97,7 +102,7 @@ def main():
             out.append('| ' + ' | '.join(x[1] for x in group) + ' |')
             group = []
     if group:
-        group += [('<sub>No preview</sub>', '')] * (3 - len(group))
+        group += [('', '')] * (3 - len(group))
         out.append('| ' + ' | '.join(x[0] for x in group) + ' |')
         out.append('| ' + ' | '.join(x[1] for x in group) + ' |')
     (ROOT / 'README.md').write_text('\n'.join(out) + '\n')
