@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build README.md game catalog from the deployment catalog + manual ratings.
+"""Build README.md game catalog from the deployment catalog and manual ratings.
 
 Sorting matches gitgame.live: stars desc, price desc, title asc.
-Paths can be overridden with CATALOG_JSON / RATINGS_JSON / SITE_THUMBS env vars.
+Russian descriptions are replaced by translations from data/descriptions_en.json.
+Paths can be overridden with CATALOG_JSON / RATINGS_JSON / SITE_THUMBS / PRICES_JSON.
 """
 import html
 import json
@@ -23,13 +24,14 @@ def short(text, limit=70):
     text = re.sub(r'\s+', ' ', text).replace('|', '/')
     if len(text) > limit:
         text = text[:limit].rsplit(' ', 1)[0] + '…'
-    return text or 'HTML5-игра с исходниками.'
+    return text or 'HTML5 game with source code.'
 
 
 def main():
     games = json.load(open(CAT))
     ratings = json.load(open(RATINGS)) if os.path.exists(RATINGS) else {}
     prices = json.load(open(PRICES)) if os.path.exists(PRICES) else {}
+    en_desc = json.load(open(ROOT / 'data/descriptions_en.json'))
     rows = []
     for g in games:
         slug = (g.get('slug') or '').strip()
@@ -40,18 +42,32 @@ def main():
         thumb = g.get('thumb') or ''
         thumb_name = Path(thumb).name if thumb else ''
         image = f'{SITE}/thumbs/{thumb_name}' if thumb_name and (THUMBS / 'thumbs' / thumb_name).exists() else None
-        rows.append((stars, price, g.get('title') or slug, slug, short(g.get('desc')),
+        desc = en_desc.get(slug) or g.get('desc') or ''
+        rows.append((stars, price, g.get('title') or slug, slug, short(desc),
                      g.get('source') or '', image))
     rows.sort(key=lambda r: (-r[0], -r[1], r[2]))
 
     out = [
         '# GitGame',
         '',
-        'Каталог HTML5-игр с готовыми веб-сборками и исходниками. Сайт: https://gitgame.live',
+        'A catalog of HTML5 games with ready web builds and source code. Live site: https://gitgame.live',
         '',
-        f'**{len(rows)} игр** с ручной оценкой. Сортировка как на сайте: по звёздам, затем по цене и названию.',
+        f'**{len(rows)} rated games**, sorted like the site: by stars, then price and title.',
         '',
-        '## Каталог игр',
+        '## Scripts',
+        '',
+        '- `scripts/game_crawler.py` — discover and enrich GitHub games (`--discover`, `--enrich`); SQLite DB `games.db`',
+        '- `scripts/auto_deploy.py` — clone, build, deploy to the fapa.io/dsgame catalog (`--n 20`)',
+        '- `scripts/daily.sh` — daily cycle: discover → enrich → deploy (cron 09:30)',
+        '- `scripts/junk_purge.py`, `scripts/catalog_*.py` — catalog cleanup and checks (headless Chrome)',
+        '- `scripts/gitgame_gen.py` — gitgame.live storefront generator (EN/DE/KR/RU/AR)',
+        '- `scripts/gen_gitgame_prices.py` — export catalog prices to `api/prices.json` for checkout',
+        '- `web/api/*.php` — DV-merchant crypto billing: checkout, webhook, order status',
+        '- `scripts/gen_readme_catalog.py` — regenerate this README from catalog data',
+        '',
+        'Regenerate with `python3 scripts/gen_readme_catalog.py`. Paths can be overridden via `CATALOG_JSON`, `RATINGS_JSON`, `PRICES_JSON`, `SITE_THUMBS`. Secrets come from the environment (`FAPA_PASS`, `GITHUB_TOKEN`) and are not stored in this repo.',
+        '',
+        '## Game catalog',
         '',
         '| | | | |',
         '|---|---|---|---|',
@@ -60,7 +76,7 @@ def main():
     for stars, price, title, slug, desc, source, image in rows:
         name = html.escape(title.replace('|', '/'))
         img = f'<img src="{image}" width="150" alt="{name}"><br>' if image else ''
-        links = f'[▶]({SITE}/game/{slug}/)'
+        links = f'[Play]({SITE}/game/{slug}/)'
         if source.startswith('https://github.com/'):
             links += f' · [GitHub]({source})'
         cells.append(f'{img}<b>{"★" * stars}{"☆" * (5 - stars)} {name}</b><br>{desc}<br>{links}')
