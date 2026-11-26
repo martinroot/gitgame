@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""
-auto_deploy.py — автономный деплой найденных парсером игр в каталог на fapa.
-Клон -> классификация -> сборка(Vite --base=./)/статика -> деплой на fapa
--> тест-рендер + игровой скрин -> карточка в catalog.json -> ссылка+скрин в Telegram.
-Сложные (Next/Go/без root index.html/тяжёлые) пропускает с пометкой в ledger.
+"""auto_deploy.py — autonomous deployment of games found by the parser into the catalog on fapa.
+Clone -> classification -> build(Vite --base=./)/static -> deploy to fapa
+-> test render + game screenshot -> card in catalog.json -> link+screenshot in Telegram.
+Skips complex ones (Next/Go/no root index.html/heavy) with a note in the ledger.
 
-  python3 auto_deploy.py --n 8         # обработать до 8 новых кандидатов
-  python3 auto_deploy.py --slugs a,b   # (не используется; авто по games.db)
-"""
+  python3 auto_deploy.py --n 8         # process up to 8 new candidates
+  python3 auto_deploy.py --slugs a,b   # (not used; automatic via games.db)"""
 import argparse, base64, json, os, re, shutil, subprocess, sys, time
 sys.path.insert(0, '/home/drogame/vibegame')
 import game_crawler as gc
 
 BUILD   = '/home/drogame/build'
 CLONES  = f'{BUILD}/auto_clones'
-STAGE   = '/home/drogame/build/deploy/catalog'      # локальный источник catalog.json
+STAGE   = '/home/drogame/build/deploy/catalog'      # local source of catalog.json
 LEDGER  = f'{BUILD}/auto_deployed.txt'
 FAPA_PASS = os.environ.get('FAPA_PASS', '')
 FAPA_CAT  = '/var/www/fapa.io/dsgame/catalog'
@@ -35,7 +33,7 @@ def scp_fapa(local, remote, timeout=300):
               f"{local} root@127.0.0.1:{remote}", timeout=timeout)
 
 def fapa_catalog():
-    """ЕДИНЫЙ источник правды — catalog.json на fapa (отражает удаления кнопкой 🗑)."""
+    """THE single source of truth — catalog.json on fapa (reflects deletions via the 🗑 button)."""
     out = ssh_fapa(f'cat {FAPA_CAT}/catalog.json').stdout
     try:
         return json.loads(out) if out.strip() else []
@@ -43,7 +41,7 @@ def fapa_catalog():
         return []
 
 def catalog_add(entry):
-    """Атомарно (flock) добавить карточку в fapa catalog.json, если слага/сорса ещё нет."""
+    """Atomically (flock) add a card to the fapa catalog.json if the slug/source is not there yet."""
     eb = base64.b64encode(json.dumps(entry, ensure_ascii=False).encode()).decode()
     php = ('<?php $f="%s/catalog.json"; $fh=fopen($f,"c+"); if(!$fh){echo "err";exit;} '
            'flock($fh,LOCK_EX); $c=json_decode(stream_get_contents($fh),true); if(!is_array($c))$c=[]; '
@@ -85,7 +83,7 @@ def tg_text(text):
 
 def screenshot(url, dest, size='1000,720'):
     prof = f'/tmp/.cp{int(time.time()*1000)}'
-    # timeout -k гарантированно убивает подвисший chrome (иначе копятся зомби-процессы)
+    # timeout -k guarantees killing a hung chrome (otherwise zombie processes pile up)
     cmd = (f'timeout -k 5 50 {CHROME} --headless=new --disable-gpu --no-sandbox --disable-dev-shm-usage '
            f'--use-gl=angle --use-angle=swiftshader-webgl --enable-webgl --hide-scrollbars '
            f'--window-size={size} --force-device-scale-factor=1 --user-data-dir={prof} '
@@ -111,7 +109,7 @@ def find_index(root):
     return os.path.dirname(hits[0]) if hits else None
 
 def vite_build(root):
-    """Пытаемся собрать Vite-проект с относительным base. Возвращает папку dist или None."""
+    """Try to build the Vite project with a relative base. Returns the dist folder or None."""
     if not (os.path.exists(f'{root}/vite.config.ts') or os.path.exists(f'{root}/vite.config.js')
             or 'vite' in (open(f'{root}/package.json').read() if os.path.exists(f'{root}/package.json') else '')):
         return None
@@ -134,9 +132,9 @@ def deploy_one(r):
     shutil.rmtree(d, ignore_errors=True)
     if sh(f'git clone --depth 1 https://github.com/{full} {d}', timeout=180).returncode != 0:
         return 'clone-fail'
-    # размер
+    # size
     szkb = int(sh(f"du -sk --exclude=.git {d}").stdout.split()[0] or 0)
-    # артефакт: сборка Vite -> dist (subpath=''); статика -> корень репо + подпуть до index.html
+    # artifact: Vite build -> dist (subpath=''); static -> repo root + subpath up to index.html
     idx = find_index(d)
     needbuild = False
     if idx:
@@ -145,11 +143,11 @@ def deploy_one(r):
     if needbuild or (idx is None):
         dist = vite_build(d)
         if dist is None:
-            return 'skip-build'      # Next/Go/Electron/непонятное — пропускаем
+            return 'skip-build'      # Next/Go/Electron/unrecognized — skip
         deploy_src, subpath = dist, ''
     else:
-        # статика: деплоим ВЕСЬ корень репо (чтобы не потерять ассеты вне папки index),
-        # играбельный путь = подпапка с index.html
+        # static: we deploy the ENTIRE repo root (so as not to lose assets outside the index folder),
+        # playable path = the subfolder with index.html
         deploy_src = d
         subpath = os.path.relpath(idx, d)
         if subpath == '.':
@@ -160,15 +158,15 @@ def deploy_one(r):
     if srckb > 250000:
         return 'skip-too-big'
     playpath = f'{slug}/{subpath}/' if subpath else f'{slug}/'
-    # rsync-исключения: НЕ выкидывать папку, в которой лежит игровой index.html
-    # (иначе на сервере останется папка без игры -> битая карточка в каталоге).
+    # rsync exclusions: do NOT drop the folder containing the game's index.html
+    # (otherwise the server will be left with a folder without the game -> a broken card in the catalog).
     excludes = ['.git', 'node_modules', '.github']
     for junk in ('tests', 'docs'):
-        # мусор выкидываем только если игровой index лежит не внутри него
+        # we drop junk only if the game's index is not inside it
         if not (subpath == junk or subpath.startswith(junk + '/')):
             excludes.append(junk)
     ex_args = ' '.join('--exclude=%s' % e for e in excludes)
-    # деплой на fapa (rsync корня с исключениями мусора)
+    # deploy to fapa (rsync of the root with junk exclusions)
     ssh_fapa(f'rm -rf {FAPA_CAT}/{slug}')
     ssh_fapa(f'mkdir -p {FAPA_CAT}/{slug}')
     sh("SSHPASS=%s sshpass -e rsync -az --delete %s "
@@ -176,20 +174,20 @@ def deploy_one(r):
        % (FAPA_PASS, ex_args, deploy_src, FAPA_CAT, slug), timeout=400)
     ssh_fapa(f'chown -R www-data:www-data {FAPA_CAT}/{slug}; find {FAPA_CAT}/{slug} -type d -exec chmod 755 {{}} +; '
              f'find {FAPA_CAT}/{slug} -type f -exec chmod 644 {{}} +')
-    # ПРОВЕРКА на сервере: игра реально лежит по игровому пути? Если нет — сносим
-    # папку и НЕ добавляем карточку (иначе в каталоге остаётся битая ссылка).
+    # CHECK on the server: is the game actually at the game path? If not — we remove
+    # the folder and do NOT add a card (otherwise a broken link remains in the catalog).
     chk = ssh_fapa(f'test -f {FAPA_CAT}/{slug}/{subpath}index.html && echo OK || echo MISSING').stdout.strip()
     if 'OK' not in chk:
         ssh_fapa(f'rm -rf {FAPA_CAT}/{slug}')
         print(f'  post-deploy check: {slug}/{subpath}index.html MISSING -> папка удалена, карточка не создана',
               file=sys.stderr)
         return 'no-index-on-server'
-    # размер задеплоенной папки (человекочитаемо)
+    # size of the deployed folder (human-readable)
     try:
         gsize = (ssh_fapa(f'du -sh {FAPA_CAT}/{slug}').stdout.split() or [''])[0]
     except Exception:
         gsize = ''
-    # скрин через публичный URL (с учётом подпути)
+    # screenshot via the public URL (taking the subpath into account)
     shot = f'/tmp/ad_{slug}.png'
     ok_shot = screenshot(f'{PUB_BASE}/{playpath}', shot)
     thumb_ok = False
@@ -199,7 +197,7 @@ def deploy_one(r):
         if thumb_ok:
             scp_fapa(th, f'{FAPA_CAT}/thumbs/{slug}.jpg')
             ssh_fapa(f'chown www-data:www-data {FAPA_CAT}/thumbs/{slug}.jpg')
-    # карточка в манифест (локально + на fapa)
+    # card into the manifest (locally + on fapa)
     ai = 'AI' if gc.ai_signal(r) else ''
     entry = {'slug': slug, 'title': name.replace('-', ' ').replace('_', ' ').title(),
              'desc': (r['description'] or '').strip()[:200] or 'Игра из парсера, авто-деплой.',
@@ -209,8 +207,8 @@ def deploy_one(r):
              'size': gsize,
              'date': (r['created_at'] or '')[:10],
              'source': r['html_url']}
-    catalog_add(entry)   # атомарно в fapa catalog.json (единый источник, под flock)
-    # пост в телеграм
+    catalog_add(entry)   # atomically into fapa catalog.json (single source, under flock)
+    # post to Telegram
     cap = (f'🎮 <b>{gc.h(entry["title"])}</b>\n'
            f'⭐{r["stars"]} · {gc.days_since(r["created_at"])}д{" · 🤖AI" if ai else ""}'
            f'{" · "+r["engine"] if r["engine"] else ""}{" · 📦"+gsize if gsize else ""}\n'
@@ -221,10 +219,10 @@ def deploy_one(r):
         tg_photo(f'{STAGE}/thumbs/{slug}.jpg', cap)
     else:
         tg_text(cap + '\n(скрин не снялся — проверь вручную)')
-    shutil.rmtree(d, ignore_errors=True)   # чистим клон (диск)
+    shutil.rmtree(d, ignore_errors=True)   # clean up the clone (disk)
     return 'deployed'
 
-# самые свежие топ-модели — по ним ГЛАВНЫЙ приоритет деплоя
+# the freshest top models — they get the MAIN deploy priority
 FRESH_MODELS = ['gpt-6', 'gpt6', 'gpt 6', 'gpt-6-astra', 'astra', 'fable', 'claude fable',
                 'fable 5', 'grok 4', 'grok4', 'grok-4', 'gemini 3', 'gemini-3', 'gemini3',
                 'qwen3', 'qwen 3', 'qwen-3', 'deepseek v3', 'deepseek-v3', 'kimi k2', 'kimi-k2',
@@ -242,9 +240,9 @@ def candidates(n, done):
     for r in rows:
         if not gc.is_game(r):
             continue
-        if r['html_url'] in have_src:   # эта репа уже в каталоге под другим слагом
+        if r['html_url'] in have_src:   # this repo is already in the catalog under a different slug
             continue
-        # AI-ключи: только свежак (FRESH_DAYS); физ-ключи: горизонт ~90 дней
+        # AI keys: only fresh ones (FRESH_DAYS); phys keys: horizon ~90 days
         is_phys = (r['src_query'] or '') in gc.PHYSICS_SET
         horizon = gc.PHYSICS_CUTOFF_DAYS if is_phys else gc.FRESH_DAYS
         if gc.days_since(r['created_at']) > horizon:
@@ -253,8 +251,8 @@ def candidates(n, done):
         if slug in done:
             continue
         elig.append(r)
-    # приоритет: свежие топ-модели (gpt6/astra/fable…) вперёд, среди них — самые свежие по дате,
-    # затем остальные по звёздам
+    # priority: fresh top models (gpt6/astra/fable…) first, among them — the freshest by date,
+    # then the rest by stars
     elig.sort(key=lambda r: (-_mboost(r), gc.days_since(r['created_at']), -(r['stars'] or 0)))
     return elig[:n]
 

@@ -1,12 +1,12 @@
 #!/bin/bash
-# catalog_cleanup.sh — регламентная чистка каталога dsgame.
+#catalog_cleanup.sh — scheduled cleanup of the dsgame catalog.
 #
-# 1) Аудит: папки без карточки в catalog.json ("не размеченные").
-# 2) Проверка загрузки каждой игры (HTTP + статика; полный рендер — по --render).
-# 3) Снос: битые карточки + неразмеченные папки (атомарно, с бэкапом catalog.json).
+#1) Audit: folders without a card in catalog.json ("unmarked").
+#2) Check loading of each game (HTTP + static; full render via --render).
+#3) Purge: broken cards + unmarked folders (atomically, with a catalog.json backup).
 #
-#   catalog_cleanup.sh            # http+static (быстро, ~1 мин)
-#   catalog_cleanup.sh --render   # + полный headless-рендер (~30 мин, раз в сутки)
+#catalog_cleanup.sh            # http+static (fast, ~1 min)
+#catalog_cleanup.sh --render   # + full headless render (~30 min, once a day)
 set -uo pipefail
 cd /home/drogame/build
 exec 9>/home/drogame/build/.catalog_cleanup.lock
@@ -21,7 +21,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 echo "[$STAMP] проверка уровня=$LEVEL"
 python3 catalog_verify.py --level "$LEVEL" --workers 4 --out "$REPORT" 2>&1 | tail -30
 
-# Список битых: карточки с непустым problems
+#Broken list: cards with non-empty problems
 python3 - "$REPORT" <<'PY'
 import json, sys
 rep = json.load(open(sys.argv[1]))
@@ -30,7 +30,7 @@ open('/home/drogame/build/.catalog_bad.txt', 'w').write('\n'.join(bad))
 print('битых карточек:', len(bad))
 PY
 
-# Неразмеченные папки (нет карточки) — через purge --unmarked
+#Unmarked folders (no card) — via purge --unmarked
 if [ -s /home/drogame/build/.catalog_bad.txt ]; then
     python3 catalog_purge.py --slugs-file /home/drogame/build/.catalog_bad.txt
 fi

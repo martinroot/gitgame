@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""
-catalog_audit.py — аудит каталога fapa.io/dsgame/catalog.
+"""catalog_audit.py — audit of the fapa.io/dsgame/catalog catalog.
 
-Ищет:
-  * папки игр без карточки в catalog.json (не размеченные);
-  * карточки без папки;
-  * превью без карточки;
-  * карточки без превью / без path.
+Looks for:
+  * game folders without a card in catalog.json (unmarked);
+  * cards without a folder;
+  * previews without a card;
+  * cards without a preview / without path.
 
-Только чтение, ничего не удаляет. Путь к JSON каталога — аргумент.
-"""
+Read-only, deletes nothing. The path to the catalog JSON is an argument."""
 import json
 import os
 import sys

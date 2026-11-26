@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Детали по битым слагам: карточка + что реально лежит в папке."""
+"""Details on broken slugs: the card + what is actually in the folder."""
 import json
 import os
 import subprocess

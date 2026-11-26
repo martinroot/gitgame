@@ -1,5 +1,5 @@
 #!/bin/bash
-# нонстоп-обёртка автодеплоя: одна волна за раз (flock), пачка --n
+#nonstop autodeploy wrapper: one wave at a time (flock), batch --n
 exec 9>/home/drogame/build/.autodeploy.lock
 flock -n 9 || { echo "$(date +%H:%M) already running"; exit 0; }
 cd /home/drogame/build

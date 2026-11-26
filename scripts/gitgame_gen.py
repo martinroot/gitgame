@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Генератор витрины gitgame.live — каталог игр с ценами (звёзды → цена).
-Мультиязычность: EN (default) / DE / KR / RU / AR (RTL), i18n на клиенте.
-Карточки: размер, стек, AI-бренд, кнопки Играть + Купить."""
+"""Showcase generator for gitgame.live — a catalog of games with prices (stars → price).
+Multilanguage: EN (default) / DE / KR / RU / AR (RTL), i18n on the client.
+Cards: size, stack, AI brand, Play + Buy buttons."""
 import json, os, html, hashlib, re
 
 CAT = '/var/www/fapa.io/dsgame/catalog/catalog.json'
 RATINGS = '/var/www/fapa.io/dsgame/catalog/ratings.json'
 OUT = '/var/www/gitgame.live'
-CONTACT = 'https://t.me/martinroot'   # TODO: подтверждение контакта для покупок
+CONTACT = 'https://t.me/martinroot'   # TODO: contact confirmation for purchases
 PLAY_BASE = 'https://fapa.io/dsgame/catalog/'
 
 BASE = {5: 1.50, 4: 1.00, 3: 0.70, 2: 0.30, 1: 0.10}
 SKIP_TAG = {'MIT', 'AI', 'demo', 'как есть', 'нет лиц.', 'CN', 'тач',
             '⚠ нужен сервер', '⚠ проверить', '⭐0', '⭐1', '⭐2', '⭐3', '⭐5'}
-# жанр → канонический ключ (для i18n)
+# genre → canonical key (for i18n)
 GENRE_MAP = {
     'FPS': 'shooter', 'Шутер': 'shooter', 'MOBA': 'action', '5v5': 'action', 'GTA-like': 'action',
     'Гонки-баттл': 'racing',
@@ -26,7 +26,7 @@ GENRE_MAP = {
     '@babylonjs/core': '3d',
     'Canvas2D': '2d', 'Canvas': '2d', 'phaser': '2d', 'pixi.js': '2d',
 }
-# AI-бренд по упоминанию в title/desc/source
+# AI brand based on mention in title/desc/source
 AI_BRANDS = [('astra', 'Astra'), ('gpt', 'GPT'), ('claude', 'Claude'),
              ('gemini', 'Gemini'), ('grok', 'Grok'), ('deepseek', 'DeepSeek')]
 TECH = {'three', 'Three.js', 'phaser', 'pixi.js', 'webgl', 'Canvas', 'Canvas2D',
@@ -36,7 +36,7 @@ def stack_of(tags, blob=''):
     for t in tags:
         if t in TECH:
             return t
-    # fallback: тег 3D/2D → название рендера, иначе ищем движок в title+desc
+    # fallback: 3D/2D tag → renderer name, otherwise look for the engine in title+desc
     if '3D' in tags:
         return '3D'
     if 'Canvas2D' in tags or 'Canvas' in tags:
@@ -54,17 +54,17 @@ def h(s):
     return int(hashlib.sha256(s.encode()).hexdigest(), 16)
 
 def stars_for(slug, tags, ratings):
-    # Реальный рейтинг из ratings.json (ручные оценки в админке каталога)
-    # ⭐0/⭐1 в тегах — маркер junk_purge (статус проверки), НЕ рейтинг
+    # Real rating from ratings.json (manual scores in the catalog admin)
+    # ⭐0/⭐1 in tags — junk_purge marker (review status), NOT a rating
     if slug in ratings:
         return int(ratings[slug])
-    return 2   # не оценённые — дефолт 2★ ($0.30)
+    return 2   # unrated ones — default 2★ ($0.30)
 
 def price_for(slug, st):
     base = BASE[st]
     jitter = (h('price' + slug) % 7) - 3   # -3..+3
     p = round((base + jitter * 0.05) * 20) / 20
-    return max(p, base)   # не опускаем ниже базовой цены
+    return max(p, base)   # don't go below the base price
 
 def esc(s):
     return html.escape(str(s), quote=True)
@@ -92,7 +92,7 @@ def load():
     for g in games:
         slug = g.get('slug', '').strip()
         if not slug: continue
-        if slug not in ratings: continue   # без звёзд — не выводим в каталоге
+        if slug not in ratings: continue   # no stars — don't show in the catalog
         tags = g.get('tags', []) or []
         st = stars_for(slug, tags, ratings)
         thumb = g.get('thumb', '')
@@ -103,7 +103,7 @@ def load():
             'desc': g.get('desc', ''),
             'tags': [t for t in tags if t not in SKIP_TAG],
             'genre': genre_of(tags),
-            'touch': 'тач' in tags,
+            'touch': 'touch' in tags,
             'stars': st,
             'price': price_for(slug, st),
             'thumb': thumb if has_thumb else '',
@@ -290,27 +290,27 @@ I18N = {
    'openworld': '오픈월드', '3d': '3D', '2d': '2D'},
  },
  'ru': {
-  'title': 'GitGame — каталог HTML5-игр с исходниками',
-  'desc': 'Каталог из {n} HTML5-игр с готовой веб-версией и исходниками. Купить от ${min:.2f}.',
-  'games': 'игр', 'games_in_catalog': 'игр в каталоге', 'from': 'от',
-  'search': 'Поиск по названию или описанию…',
-  'sort_top': 'Сначала топ', 'sort_priceUp': 'Цена ↑', 'sort_priceDown': 'Цена ↓',
-  'sort_name': 'По имени', 'sort_new': 'Новые',
-  'allstars': 'Все ★', 'touch': '📱 Тач', 'allgenres': 'Все жанры',
-  'nothing': 'Ничего не найдено — попробуйте другой фильтр',
-  'buy': 'Купить', 'play': '▶ Играть', 'buy_for': 'Купить за ${p:.2f}',
-  'size': 'Размер', 'stack': 'Стек', 'added': 'Добавлена', 'ai': 'AI',
-  'footer': 'GitGame — маркетплейс HTML5-игр: {n} игр с готовой веб-версией и исходниками. Лицензия прилагается.',
-  'footer2': 'GitGame — маркетплейс HTML5-игр. Лицензия прилагается к каждой покупке.',
-  'back': '← Назад в каталог', 'modal_title': 'Оформление покупки',
-  'modal_body': '«{t}» — ${p:.2f}<br>Оплата криптовалютой (BTC/ETH/USDT…). Исходники и лицензия откроются автоматически после оплаты.',
-  'modal_pay': 'Оплатить криптовалютой', 'modal_later': 'Позже',
-  'ratings': 'Рейтинг', 'generated': 'веб-версия',
-  'genres': {'other': 'Прочее', 'shooter': 'Шутер', 'action': 'Экшн', 'racing': 'Гонки',
-   'puzzle': 'Головоломка', 'strategy': 'Стратегия', 'farm': 'Ферма', 'sport': 'Спорт',
-   'arcade': 'Аркада', 'builder': 'Билдер', 'runner': 'Раннер', 'fishing': 'Рыбалка',
-   'casual': 'Казуальная', 'management': 'Менеджмент', 'tycoon': 'Тайкун',
-   'openworld': 'Открытый мир', '3d': '3D', '2d': '2D'},
+  'title': 'GitGame — a catalog of HTML5 games with source code',
+  'desc': 'A catalog of {n} HTML5 games with a ready web version and source code. Buy from ${min:.2f}.',
+  'games': 'games', 'games_in_catalog': 'games in the catalog', 'from': 'from',
+  'search': 'Search by title or description…',
+  'sort_top': 'Top first', 'sort_priceUp': 'Price ↑', 'sort_priceDown': 'Price ↓',
+  'sort_name': 'By name', 'sort_new': 'Newest',
+  'allstars': 'All ★', 'touch': '📱 Touch', 'allgenres': 'All genres',
+  'nothing': 'Nothing found — try another filter',
+  'buy': 'Buy', 'play': '▶ Play', 'buy_for': 'Buy for ${p:.2f}',
+  'size': 'Size', 'stack': 'Stack', 'added': 'Added', 'ai': 'AI',
+  'footer': 'GitGame — an HTML5 games marketplace: {n} games with a ready web version and source code. License included.',
+  'footer2': 'GitGame — an HTML5 games marketplace. A license is included with every purchase.',
+  'back': '← Back to catalog', 'modal_title': 'Checkout',
+  'modal_body': '«{t}» — ${p:.2f}<br>Pay with cryptocurrency (BTC/ETH/USDT…). Source code and license will be unlocked automatically after payment.',
+  'modal_pay': 'Pay with cryptocurrency', 'modal_later': 'Later',
+  'ratings': 'Rating', 'generated': 'web version',
+  'genres': {'other': 'Other', 'shooter': 'Shooter', 'action': 'Action', 'racing': 'Racing',
+   'puzzle': 'Puzzle', 'strategy': 'Strategy', 'farm': 'Farm', 'sport': 'Sports',
+   'arcade': 'Arcade', 'builder': 'Builder', 'runner': 'Runner', 'fishing': 'Fishing',
+   'casual': 'Casual', 'management': 'Management', 'tycoon': 'Tycoon',
+   'openworld': 'Open world', '3d': '3D', '2d': '2D'},
  },
  'ar': {
   'title': 'GitGame — كتالوج ألعاب HTML5 مع الكود المصدري',
@@ -339,7 +339,7 @@ I18N = {
 LANGS = ['en', 'de', 'kr', 'ru', 'ar']
 LANG_LABEL = {'en': 'EN', 'de': 'DE', 'kr': 'KR', 'ru': 'RU', 'ar': 'AR'}
 
-# JS i18n runtime: подставляет строки по data-i18n, dir=rtl для AR, жаргонные переводы жанров
+# JS i18n runtime: substitutes strings via data-i18n, dir=rtl for AR, slangy genre translations
 JS_I18N = """
 const L=%s;
 const DIRS={ar:'rtl'};

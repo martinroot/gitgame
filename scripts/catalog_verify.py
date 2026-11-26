@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""
-catalog_verify.py — проверка каталога fapa.io/dsgame/catalog на загружаемость.
+"""catalog_verify.py — check of the fapa.io/dsgame/catalog catalog for loadability.
 
-Уровни (по дешёве к дорогому):
-  1) static  — есть ли index.html по card['path']; существуют ли локальные
-                ресурсы, на которые ссылается index.html (src/href/url());
-  2) http    — GET игрового URL: код ответа, размер, финальный URL (редирект на 404);
-  3) render  — headless Chrome: JS-ошибки в консоли + пустой (однотонный) скрин.
+Levels (from cheapest to most expensive):
+  1) static  — whether index.html exists at card['path']; whether the local
+                resources referenced by index.html (src/href/url()) exist;
+  2) http    — GET of the game URL: response code, size, final URL (redirect to a 404);
+  3) render  — headless Chrome: JS errors in the console + an empty (solid-color) screenshot.
 
-Вывод: JSON-отчёт + сводка в stdout. Ничего не удаляет.
+Output: JSON report + summary to stdout. Deletes nothing.
 
   python3 catalog_verify.py --level static|http|render --out report.json
-  python3 catalog_verify.py --level http --limit 50 --slug foo,bar
-"""
+  python3 catalog_verify.py --level http --limit 50 --slug foo,bar"""
 import argparse
 import json
 import os
@@ -27,7 +25,7 @@ CAT = '/var/www/fapa.io/dsgame/catalog'
 PUB = 'https://fapa.io/dsgame/catalog'
 CHROME = 'google-chrome-stable'
 
-# Локальные ресурсы: относительные или от корня сайта. Внешние (http/https//) не проверяем.
+# Local resources: relative or site-root-relative. External (http/https//) ones are not checked.
 ATTR_RE = re.compile(
     r'''(?:src|href)\s*=\s*["']([^"']+)["']|url\(\s*["']?([^"')]+)["']?\s*\)''',
     re.I,
@@ -44,7 +42,7 @@ def catalog():
 
 
 def local_refs(html):
-    """Локальные ссылки из HTML: абсолютные от корня сайта и относительные."""
+    """Local links from HTML: absolute from the site root and relative."""
     out = []
     for m in ATTR_RE.finditer(html):
         ref = (m.group(1) or m.group(2) or '').strip()
@@ -57,7 +55,7 @@ def local_refs(html):
 
 
 def check_static(g):
-    """Карточка -> папка игры -> index.html -> локальные ресурсы."""
+    """Card -> game folder -> index.html -> local resources."""
     slug = g.get('slug', '')
     path = (g.get('path') or '').strip('/')
     base = os.path.join(CAT, slug)
@@ -83,7 +81,7 @@ def check_static(g):
     for ref in local_refs(html):
         res['checked_refs'] += 1
         if ref.startswith('/'):
-            # от корня сайта: /assets/... -> /var/www/fapa.io/assets/...
+            # from the site root: /assets/... -> /var/www/fapa.io/assets/...
             cand = os.path.join('/var/www/fapa.io', ref.lstrip('/'))
         else:
             cand = os.path.join(idx_dir, ref)
@@ -95,7 +93,7 @@ def check_static(g):
 
 
 def check_http(g):
-    """GET игрового URL: код, размер, редирект."""
+    """GET of the game URL: code, size, redirect."""
     slug = g.get('slug', '')
     path = (g.get('path') or '').strip('/')
     url = f'{PUB}/{slug}/{path}' if path else f'{PUB}/{slug}/'
@@ -127,7 +125,7 @@ def check_http(g):
 
 
 def is_blank(png):
-    """Пустой кадр = почти один цвет (как в junk_purge.py)."""
+    """Empty frame = almost a single color (as in junk_purge.py)."""
     try:
         from PIL import Image
         from collections import Counter
@@ -145,7 +143,7 @@ def is_blank(png):
 
 
 def check_render(g):
-    """Headless Chrome: JS-ошибки + пустой скрин."""
+    """Headless Chrome: JS errors + blank screenshot."""
     slug = g.get('slug', '')
     path = (g.get('path') or '').strip('/')
     url = f'{PUB}/{slug}/{path}' if path else f'{PUB}/{slug}/'

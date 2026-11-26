@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""
-blank_probe.py — ручная проверка «blank»-игр: грузим страницу и смотрим,
-что реально в DOM (текст, canvas, кнопка старта) вместо сухой картинки.
+"""blank_probe.py — manual check of "blank" games: we load the page and look at
+what is actually in the DOM (text, canvas, start button) instead of a bare screenshot.
 
-Для каждого слага: скрин + размер + доля тёмного + первые строки body.
-"""
+For each slug: screenshot + size + dark-pixel share + the first lines of body."""
 import os
 import re
 import subprocess

@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""
-yandex_fit.py — 2-й этап радара: оценка пригодности репы к Яндекс.Играм.
+"""yandex_fit.py — stage 2 of the radar: assessing how suitable a repo is for Yandex Games.
 
-Берёт кандидатов из out.json (вывод vibegame_radar.py), дообогащает каждую
-репу через GitHub API (лицензия, языки, корневые файлы, package.json, README)
-и считает «Yandex Fitness» — насколько легко довести игру до публикации на
-Яндекс.Играх (статика в zip + Yandex Games SDK) и монетизировать рекламой.
+Takes candidates from out.json (the output of vibegame_radar.py), further enriches each
+repo via the GitHub API (license, languages, root files, package.json, README)
+and computes "Yandex Fitness" — how easily the game can be brought to publication on
+Yandex Games (static files in a zip + Yandex Games SDK) and monetized with ads.
 
-Запуск:
+Usage:
   export GITHUB_TOKEN=ghp_...
   python3 yandex_fit.py --in out.json --top 10
-  python3 yandex_fit.py --in out.json --json fit.json
-"""
+  python3 yandex_fit.py --in out.json --json fit.json"""
 
 import argparse
 import base64
@@ -29,7 +27,7 @@ PERMISSIVE = {"MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC",
               "UNLICENSE", "CC0-1.0", "0BSD", "ZLIB", "MPL-2.0"}
 COPYLEFT = {"GPL-2.0", "GPL-3.0", "AGPL-3.0", "LGPL-3.0", "LGPL-2.1"}
 
-# зависимости/файлы, означающие ОБЯЗАТЕЛЬНЫЙ серверный бэкенд (Яндекс хостит только статику)
+# dependencies/files that mean a MANDATORY server backend (Yandex hosts only static files)
 SERVER_DEPS = {"socket.io", "ws", "express", "fastify", "koa", "colyseus",
                "@colyseus/core", "socket.io-server", "uWebSockets.js", "hapi", "nakama-js"}
 SERVER_FILES = {"server.js", "server.ts", "server.py", "app.py", "main.py",
@@ -38,7 +36,7 @@ SERVER_FILES = {"server.js", "server.ts", "server.py", "app.py", "main.py",
 CLIENT_ENGINES = {"three", "@react-three/fiber", "phaser", "pixi.js", "babylonjs",
                   "@babylonjs/core", "aframe", "playcanvas", "kaboom", "kaplay", "excalibur"}
 
-# жанры → монетизационный профиль (рекламой на Яндексе)
+# genres → monetization profile (ads on Yandex)
 GENRE_GOOD = ["runner", "arcade", "racing", "kart", "tower defense", "tower-defense",
               "hyper-casual", "hypercasual", "casual", "puzzle", "clicker", "idle",
               "endless", "flappy", "crossy", "match-3", "shooter", ".io"]
@@ -126,7 +124,7 @@ def enrich(full_name, token):
                   else "Vite → npm run build даёт статику" if has_vite
                   else "нет явной статики/сборки — паковать сложнее")
 
-    # README + описание для эвристик
+    # README + description for the heuristics
     readme = fetch_text(f"/repos/{full_name}/readme", token).lower()
     desc = (meta.get("description") or "").lower()
     topics = " ".join(meta.get("topics") or []).lower()

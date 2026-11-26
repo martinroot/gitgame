@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""
-vibegame_radar.py — радар свежих хайповых vibe-coded игровых репозиториев на GitHub.
+"""vibegame_radar.py — radar of fresh hyped vibe-coded game repositories on GitHub.
 
-Логика:
-  1. Гоняем набор поисковых запросов по GitHub Search API (свежие репы, N дней).
-  2. Кладём снапшот в SQLite -> при следующем запуске считаем ДЕЛЬТУ звёзд
-     (реальная скорость хайпа, а не абсолютные звёзды).
-  3. Скорим: velocity + бонусы за playable demo, движок, свежесть.
-  4. Отдаём топ в stdout / JSON / Telegram.
+Logic:
+  1. Run a set of search queries against the GitHub Search API (fresh repos, N days).
+  2. Store a snapshot in SQLite -> on the next run compute the star DELTA
+     (the actual hype velocity, not absolute stars).
+  3. Score: velocity + bonuses for a playable demo, engine, freshness.
+  4. Output the top to stdout / JSON / Telegram.
 
-Запуск:
-  export GITHUB_TOKEN=ghp_...        # без токена 10 запросов/мин, с токеном 30/мин
+Usage:
+  export GITHUB_TOKEN=ghp_...        # without a token 10 requests/min, with a token 30/min
   python3 vibegame_radar.py --days 30 --top 20
-  python3 vibegame_radar.py --days 14 --telegram      # нужны TG_BOT_TOKEN, TG_CHAT_ID
-"""
+  python3 vibegame_radar.py --days 14 --telegram      # needs TG_BOT_TOKEN, TG_CHAT_ID"""
 
 import argparse
 import json
@@ -29,7 +27,7 @@ import requests
 API = "https://api.github.com"
 DB_PATH = os.environ.get("VG_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "radar.db"))
 
-# Наборы запросов. Каждый — отдельный вызов search API, поэтому держим их осмысленными.
+# Query sets. Each one is a separate search API call, so we keep them meaningful.
 QUERY_TEMPLATES = [
     'topic:vibe-coding topic:game',
     'topic:vibecoding game',
@@ -136,12 +134,12 @@ def score_repo(repo, con, now_ts):
         " ".join(repo.get("topics") or []), repo.get("homepage"),
     ]))
 
-    # Скорость: дельта между запусками, если она есть; иначе средняя за жизнь репы.
+    # Velocity: the delta between runs, if there is one; otherwise the average over the repo's lifetime.
     prev = prev_snapshot(con, repo["full_name"], now_ts)
     if prev:
         prev_ts, prev_stars = prev
         hours = max(1.0, (now_ts - prev_ts) / 3600)
-        velocity = (stars - prev_stars) / hours * 24  # звёзд/сутки
+        velocity = (stars - prev_stars) / hours * 24  # stars/day
         vel_source = "delta"
     else:
         velocity = stars / age_days
@@ -154,7 +152,7 @@ def score_repo(repo, con, now_ts):
     score += keyword_score(blob, ENGINE_HINTS) * 3
     score += keyword_score(blob, MONETIZATION_HINTS) * 3
     score += 25 if has_demo else 0
-    score += 15 if stale_days < 3 else (5 if stale_days < 10 else 0)   # живой проект
+    score += 15 if stale_days < 3 else (5 if stale_days < 10 else 0)   # alive project
     score -= 20 if repo.get("fork") else 0
     score -= 15 if stars < 5 else 0
 
@@ -223,7 +221,7 @@ def main():
         print(f"[q] {q}", file=sys.stderr)
         for repo in gh_search(q, since, token=token):
             raw[repo["full_name"]] = repo
-        time.sleep(2 if token else 7)   # держимся в лимите search API
+        time.sleep(2 if token else 7)   # staying within the search API limit
 
     scored = []
     for repo in raw.values():

@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
-"""
-game_crawler.py — автономный краулер хайповых игровых репозиториев GitHub
-для отбора под Яндекс.Игры. Пишет большую постоянную базу (SQLite),
-обходит пространство поиска шардами (тема × недельное окно created),
-работает порциями в рамках бюджета rate-limit и ставится на крон.
+"""game_crawler.py — an autonomous crawler for hyped GitHub game repositories
+for selection for Yandex.Games. Writes a large persistent database (SQLite),
+crawls the search space in shards (topic × weekly created window),
+works in batches within the rate-limit budget and is scheduled on cron.
 
-Стадии (разведены, каждая ограничена бюджетом):
-  discovery  — sharded search API: находим репы, снапшотим звёзды
-  enrich     — core API: лицензия/языки/файлы/README → fitness + demo + media
-  digest     — шлём НОВЫЕ находки в Telegram (repo + demo + media)
+Stages (kept separate, each limited by its own budget):
+  discovery  — sharded search API: find repos, snapshot stars
+  enrich     — core API: license/languages/files/README → fitness + demo + media
+  digest     — sends NEW finds to Telegram (repo + demo + media)
 
-Крон (чистый Python, без Claude → LLM-токенов 0):
+Cron (pure Python, no Claude → 0 LLM tokens):
   17 * * * *  python3 /home/drogame/vibegame/game_crawler.py --run
   30 9 * * *  python3 /home/drogame/vibegame/game_crawler.py --digest
 
 CLI:
-  python3 game_crawler.py --run        # ensure-shards + discovery + enrich (бюджетно)
-  python3 game_crawler.py --discover   # только discovery
-  python3 game_crawler.py --enrich     # только enrich
-  python3 game_crawler.py --digest     # дайджест в Telegram
-  python3 game_crawler.py --status     # статистика базы
-"""
+  python3 game_crawler.py --run        # ensure-shards + discovery + enrich (budgeted)
+  python3 game_crawler.py --discover   # discovery only
+  python3 game_crawler.py --enrich     # enrich only
+  python3 game_crawler.py --digest     # digest to Telegram
+  python3 game_crawler.py --status     # database statistics"""
 
 import argparse
 import base64
@@ -46,32 +44,32 @@ TG_CHAT_ID = "353169388"
 
 API = "https://api.github.com"
 
-MONTHS_BACK = 2          # (устар.) не используется
-CUTOFF_DAYS = 4          # НОВЫЙ ПРИНЦИП: ищем только за последние N дней
-PHYSICS_CUTOFF_DAYS = 90 # для физ-ключей ограничение по дате снято: смотрим ~2-3 месяца
-MIN_STARS = 0            # звёзды больше НЕ критерий — берём и свежак с 0 звёзд
+MONTHS_BACK = 2          # (deprecated) not used
+CUTOFF_DAYS = 4          # NEW PRINCIPLE: search only for the last N days
+PHYSICS_CUTOFF_DAYS = 90 # for physics keys the date restriction is lifted: we look ~2-3 months back
+MIN_STARS = 0            # stars are NO LONGER a criterion — we also take fresh repos with 0 stars
 PER_PAGE = 100
-MAX_PAGES = 10           # жёсткий потолок Search API = 1000 результатов/запрос
+MAX_PAGES = 10           # hard Search API ceiling = 1000 results/query
 
-# бюджет на один прогон
+# budget for a single run
 SEARCH_CALLS_PER_RUN = 60
-ENRICH_REPOS_PER_RUN = 1500   # верхний кап; реально ограничит core-бюджет (~1700 реп/час)
-SEARCH_FLOOR = 6         # стоп, если осталось меньше запросов поиска
-CORE_FLOOR = 600         # стоп, если осталось меньше core-запросов
-SEARCH_PACE = 2.0        # сек между search-запросами (лимит 30/мин)
+ENRICH_REPOS_PER_RUN = 1500   # upper cap; in practice it will limit the core budget (~1700 repos/hour)
+SEARCH_FLOOR = 6         # stop if fewer search requests remain
+CORE_FLOOR = 600         # stop if fewer core requests remain
+SEARCH_PACE = 2.0        # seconds between search requests (30/min limit)
 CORE_PACE = 0.25
 
-# дайджест
+# digest
 DIGEST_MIN_FITNESS = 60
-DIGEST_MAX = 10          # потолок при ручном --digest
-REALTIME_MAX = 6         # сколько постим за один автопрогон (realtime, остальное — в след. прогон)
-# хайп-гейт: постим, только если у репы реальная тяга
-HYPE_STARS = 50          # (устар.) хайп-порог, больше не гейт — оставлен для справки
-HYPE_VELOCITY = 4.0      # рост звёзд/сутки — идёт в ранг
-FRESH_DAYS = 4           # ГЛАВНЫЙ критерий: только игры за последние N дней (ежедневная порция)
-TOY_STARS = 3            # 0★ без demo отсекаем как недоделку; с demo — берём даже 0★
+DIGEST_MAX = 10          # cap for manual --digest
+REALTIME_MAX = 6         # how many we post per automated run (realtime; the rest goes to the next run)
+# hype gate: post only if the repo has real traction
+HYPE_STARS = 50          # (deprecated) hype threshold, no longer a gate — kept for reference
+HYPE_VELOCITY = 4.0      # star growth per day — feeds into the rank
+FRESH_DAYS = 4           # MAIN criterion: only games from the last N days (daily batch)
+TOY_STARS = 3            # 0★ without demo are cut off as unfinished; with demo — we take even 0★
 
-# НОВЫЙ ПРИНЦИП (2026-09-10): только эти 5 свежайших моделей, окно 4 дня, ежедневно.
+# NEW PRINCIPLE (2026-09-10): only these 5 freshest models, 4-day window, daily.
 AI_TOOLS = [
     '"fable 5.1"', "fable", '"claude fable"',
     "astra", '"gpt-6-astra"',
@@ -80,38 +78,38 @@ AI_TOOLS = [
     '"gemini 3.8"', '"gemini 3.8 flash"', '"gemini 3"',
 ]
 GAME_TERMS = ["game", "game browser", "html5 game"]
-# матрица: каждый AI-ключ × игровой термин  (~43×3 ≈ 130 запросов)
+# matrix: each AI key × game term  (~43×3 ≈ 130 requests)
 QUERIES = [f"{t} {g}" for t in AI_TOOLS for g in GAME_TERMS]
-# + покрытие по движкам/vibe-топикам (свежие веб-игры вообще)
+# + coverage of engines/vibe topics (fresh web games in general)
 QUERIES += [
     "topic:vibe-coding game", '"vibe game"', "topic:threejs game",
     "topic:webgl game", "topic:html5-game", "topic:browser-game",
     "topic:phaser game", "topic:babylonjs game", "topic:webgpu game",
     "topic:aframe game",
 ]
-# + «залипательная физика»: ragdoll / гравитация / стикмены / разрушение / песочницы.
-# Смысл — сама механика физики залипательная, а не AI-модель. Ищем и по движкам физики.
+# + "addictive physics": ragdoll / gravity / stickmen / destruction / sandboxes.
+# The point is that the physics mechanic itself is addictive, not the AI model. We also search by physics engines.
 PHYSICS_TERMS = [
-    # ядро жанра
+    # core of the genre
     '"physics game"', '"physics sandbox"', '"ragdoll physics"', "ragdoll game",
     '"gravity game"', '"gravity mod"', '"zero gravity" game',
-    # стикмены / тряпичная кукла / расчленёнка / падения
+    # stickmen / ragdoll / gore / falls
     "stickman physics", '"stick fight"', '"ragdoll runner"',
     '"fall flat"', '"human fall"', '"getting over it"',
     "dismember physics", '"soft body" game', '"cloth simulation" game',
-    # бросание / разрушение / складывание предметов
+    # throwing / destruction / stacking objects
     '"destruction physics"', '"throw physics"', '"physics puzzle"',
     '"stacking" physics game', '"vehicle physics" game', '"car physics" game',
     "climbing physics game",
-    # физ-движки (на них и делают такие игрушки)
+    # physics engines (that's what such games are built with)
     "matter.js game", "matter-js game", "box2d game", "planck.js game",
     "cannon.js game", "cannon-es game", "rapier physics game", "ammo.js game",
-    # топики
+    # topics
     "topic:physics game", "topic:matter-js", "topic:ragdoll",
     "topic:physics-simulation game", "topic:box2d", "topic:2d-physics game",
 ]
 QUERIES += PHYSICS_TERMS
-PHYSICS_SET = set(PHYSICS_TERMS)   # по этим ключам действует длинный горизонт дат
+PHYSICS_SET = set(PHYSICS_TERMS)   # these keys use a long date horizon
 
 PERMISSIVE = {"MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC",
               "UNLICENSE", "CC0-1.0", "0BSD", "ZLIB", "MPL-2.0"}
@@ -128,7 +126,7 @@ GENRE_GOOD = ["runner", "arcade", "racing", "kart", "tower defense", "tower-defe
               "endless", "flappy", "crossy", "match-3", "shooter", ".io", "platformer"]
 GENRE_HARD = ["rpg", "mmo", "simulator", "sandbox", "open world", "open-world",
               "strategy", "roguelike", "metroidvania"]
-# признаки «не игра» (awesome-списки, инструменты, движки, шаблоны, туториалы)
+# signs of "not a game" (awesome lists, tools, engines, templates, tutorials)
 JUNK_HINTS = ["awesome-", "awesome ", "list of", "curated", "collection of",
               "boilerplate", "starter template", "starter kit", "cheatsheet",
               "roadmap", "tutorial", "course", "handbook",
@@ -155,7 +153,7 @@ def h(s):
 
 _LOCK_FH = None
 def acquire_lock():
-    """Один инстанс краулера за раз — иначе гонка select→post даёт дубли постов."""
+    """One crawler instance at a time — otherwise the select→post race produces duplicate posts."""
     global _LOCK_FH
     _LOCK_FH = open(os.path.join(HOME, ".crawler.lock"), "w")
     try:
@@ -176,7 +174,7 @@ def load_env(path):
 
 
 def gh(path, token, params=None):
-    """Возвращает (json|None, headers)."""
+    """Returns (json|None, headers)."""
     h = {"Accept": "application/vnd.github+json"}
     if token:
         h["Authorization"] = f"Bearer {token}"
@@ -229,7 +227,7 @@ def db():
     try:
         con.execute("ALTER TABLE repos ADD COLUMN src_query TEXT")
     except sqlite3.OperationalError:
-        pass   # колонка уже есть
+        pass   # column already exists
     con.executescript("""
     CREATE TABLE IF NOT EXISTS repos (
         full_name TEXT PRIMARY KEY,
@@ -263,12 +261,12 @@ def db():
     return con
 
 
-RESCAN_HOURS = 6         # как часто пере-сканировать ключ (ловим свежесозданные репы)
+RESCAN_HOURS = 6         # how often to rescan the key (to catch freshly created repos)
 
 
 def ensure_shards(con):
-    """Модель '1 ключ = 1 свежий срез' (created:>=cutoff). Пере-скан каждые RESCAN_HOURS."""
-    con.execute("DELETE FROM shards WHERE win_start!='recent'")   # чистим legacy недельные шарды
+    """The '1 key = 1 fresh snapshot' model (created:>=cutoff). Rescan every RESCAN_HOURS."""
+    con.execute("DELETE FROM shards WHERE win_start!='recent'")   # clean up legacy weekly shards
     now_ts = int(time.time())
     added = 0
     for q in QUERIES:
@@ -401,7 +399,7 @@ def score_repo(meta, langs, root_files, deps, blob, demo, has_static_demo):
         score += 25
     elif lic in COPYLEFT:
         score += 12
-    # NOASSERTION / прочее — 0 (флаг лицензии смотрим на публикации)
+    # NOASSERTION / other — 0 (license flag is checked at publication)
     if static_ok:
         score += 20
     if self_contained:
@@ -420,10 +418,10 @@ def score_repo(meta, langs, root_files, deps, blob, demo, has_static_demo):
         score -= 5
     if yandex_ready:
         score += 5
-    # backend больше НЕ штраф (io/сервер допустимы) — только тег
+    # backend is NO LONGER a penalty (io/server are allowed) — just a tag
     score = max(0, min(100, score))
     if junk:
-        score = min(score, 25)   # не-игра/инструмент → вниз, в дайджест не попадёт
+        score = min(score, 25)   # non-game/tool → down, won't make it into the digest
     verdict = "junk" if junk else ("green" if score >= 65 else ("yellow" if score >= 40 else "red"))
 
     return dict(license=lic, backend=int(backend), engine=engine,
@@ -459,7 +457,7 @@ def extract_media(readme, full_name):
 
 
 def enrich(con, token):
-    # пре-фильтр: не тратим core-бюджет на явно-не-игры (по данным поиска)
+    # pre-filter: don't spend core budget on obvious non-games (based on search data)
     rows = con.execute(
         "SELECT full_name FROM repos WHERE enriched=0 AND is_fork=0 "
         "AND (lower(full_name) LIKE '%game%' OR lower(coalesce(description,'')) LIKE '%game%' "
@@ -546,8 +544,8 @@ def tg_send_text(tok, text):
 
 
 def normalize_image(path):
-    """Пере-кодируем в безопасный для Telegram JPEG (иначе бывает IMAGE_PROCESS_FAILED).
-    Возвращает путь к .jpg или None, если это не картинка."""
+    """Re-encode to a Telegram-safe JPEG (otherwise IMAGE_PROCESS_FAILED can happen).
+    Returns the path to the .jpg, or None if it's not an image."""
     try:
         from PIL import Image
         im = Image.open(path)
@@ -562,7 +560,7 @@ def normalize_image(path):
 
 
 def send_photos(tok, photos, cap):
-    """Шлём фото альбомом; если альбом упал (битая картинка) — по одному, битые пропускаем."""
+    """Send photos as an album; if the album fails (broken image) — send one by one, skipping broken ones."""
     photos = photos[:10]
     if len(photos) >= 2:
         media, files = [], {}
@@ -591,7 +589,7 @@ def send_photos(tok, photos, cap):
 
 
 def shoot_demo(url, dest):
-    """Скриншот живого demo через headless Chrome. True при успехе."""
+    """Screenshot of the live demo via headless Chrome. True on success."""
     if not url:
         return False
     profile = os.path.join(SHOTS_DIR, ".prof-" + str(int(time.time() * 1000)))
@@ -617,7 +615,7 @@ def shoot_demo(url, dest):
 
 
 def fetch_file(url, dest_base):
-    """Качает медиа. Возвращает (path, kind) kind in photo/animation/video, или None."""
+    """Downloads media. Returns (path, kind) where kind is photo/animation/video, or None."""
     try:
         r = requests.get(url, timeout=40, stream=True,
                          headers={"User-Agent": "vibegame-radar"})
@@ -648,7 +646,7 @@ def fetch_file(url, dest_base):
 
 
 def conclude(r):
-    """Короткий практический ВЫВОД по игре: что делать для порта на Яндекс."""
+    """Short practical CONCLUSION for the game: what to do to port it to Yandex."""
     lic = (r["license"] or "").upper()
     if lic in ("NOASSERTION", "NONE", ""):
         base = "нет лицензии — форк под вопросом, писать автору"
@@ -703,17 +701,17 @@ def caption_for(r, vel=0.0):
 
 
 def post_game(tok, r, vel=0.0):
-    """1 игра = 1 пост: скрин demo + медиа из README, файлами, с подписью."""
+    """1 game = 1 post: demo screenshot + media from README, as files, with a caption."""
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", r["full_name"])
     photos, gifs, videos = [], [], []
 
-    # 1) живой скрин demo (герой)
+    # 1) live demo screenshot (hero)
     if r["demo"]:
         shot = os.path.join(SHOTS_DIR, f"{slug}_demo.png")
         if shoot_demo(r["demo"], shot):
             photos.append(shot)
 
-    # 2) медиа из README
+    # 2) media from README
     for i, url in enumerate(json.loads(r["media"] or "[]")):
         if len(photos) >= 6 and gifs and videos:
             break
@@ -728,10 +726,10 @@ def post_game(tok, r, vel=0.0):
         elif kind == "video" and len(videos) < 1:
             videos.append(path)
 
-    # нормализуем все фото в безопасный JPEG (чинит IMAGE_PROCESS_FAILED), битые выкидываем
+    # normalize all photos to a safe JPEG (fixes IMAGE_PROCESS_FAILED), drop broken ones
     photos = [n for n in (normalize_image(p) for p in photos) if n]
 
-    # постим, если есть визуал; если визуала нет — только когда есть demo/сборка/звёзды
+    # post if there's a visual; if there's no visual — only when there's a demo/build/stars
     if (not photos and not gifs and not videos
             and not r["demo"] and not r["static_ok"] and (r["stars"] or 0) < TOY_STARS):
         return False
@@ -742,7 +740,7 @@ def post_game(tok, r, vel=0.0):
     else:
         ok = tg_send_text(tok, cap)
 
-    # гифки и видео — отдельными сообщениями
+    # GIFs and videos — as separate messages
     for g in gifs:
         with open(g, "rb") as f:
             tg_api("sendAnimation", tok, data={"chat_id": TG_CHAT_ID}, files={"animation": f})
@@ -753,7 +751,7 @@ def post_game(tok, r, vel=0.0):
 
 
 def velocity(con, fn):
-    """Рост звёзд/сутки по star_history (0, если истории мало)."""
+    """Star growth per day based on star_history (0 if there's too little history)."""
     rows = con.execute("SELECT ts, stars FROM star_history WHERE full_name=? "
                        "ORDER BY ts", (fn,)).fetchall()
     if len(rows) < 2:
@@ -764,18 +762,18 @@ def velocity(con, fn):
     return round((s1 - s0) / days, 1)
 
 
-# сильные игровые топики (сам факт = игра); generic "game"/"gamedev" тут НЕ считаем — их юзают и либы
+# strong game topics (the very fact = a game); generic "game"/"gamedev" are NOT counted here — libraries use them too
 STRONG_GAME_TOPICS = {"html5-game", "browser-game", "webgame", "web-game", "indie-game",
                       "indiegame", "2d-game", "3d-game", "multiplayer-game", "io-game",
                       "idle-game", "incremental-game", "roguelike", "platformer",
                       "tower-defense", "arcade-game", "puzzle-game", "racing-game",
                       "shooter-game", "gamejam", "game-jam", "html5-canvas-game"}
-# веб-сигнал: игра реально в браузере
+# web signal: the game actually runs in the browser
 WEB_TOPICS = {"html5-game", "browser-game", "webgame", "web-game", "threejs", "three-js",
               "webgl", "webgpu", "phaser", "babylonjs", "pixijs", "html5", "html5-canvas",
               "javascript-game", "webassembly", "wasm", "react-three-fiber", "aframe"}
 WEB_LANGS = {"JavaScript", "TypeScript", "HTML", "Svelte", "Vue", "Astro"}
-# тул/не-игра сигналы (по топикам и тексту)
+# tool/non-game signals (based on topics and text)
 TOOL_TOPICS = {"gdextension", "godot-addon", "extension", "addon", "plugin", "library",
                "framework", "sdk", "data-analytics", "analytics", "data-science",
                "game-hacking", "cheat", "cheat-engine", "reverse-engineering", "mod",
@@ -792,7 +790,7 @@ GAME_WORD_RE = re.compile(r'\bgame\b|\bгейм|\bигр|\bplayable\b|\bgameplay
 
 
 def is_game(r):
-    """Гейт «это реально ВЕБ-игра» по сохранённым topics+описанию+языку (без пере-обогащения)."""
+    """Gate "is it really a WEB game" based on saved topics+description+language (without re-enrichment)."""
     try:
         topics = set(json.loads(r["topics"] or "[]"))
     except Exception:
@@ -800,18 +798,18 @@ def is_game(r):
     text = f'{r["full_name"]} {r["description"] or ""}'.lower()
     lang = r["language"] or ""
 
-    # тул/не-игра → сразу мимо
+    # tool/non-game → skip right away
     if topics & TOOL_TOPICS:
         return False
     if any(w in text for w in TOOL_WORDS):
         return False
 
-    # это вообще игра?
+    # is it even a game?
     game_signal = bool(topics & STRONG_GAME_TOPICS) or bool(GAME_WORD_RE.search(text))
     if not game_signal:
         return False
 
-    # это ВЕБ-игра? (иначе нативное C/DOS/десктоп — не под Яндекс)
+    # is it a WEB game? (otherwise native C/DOS/desktop — not suitable for Yandex)
     web_signal = (bool(r["demo"]) or bool(topics & WEB_TOPICS)
                   or lang in WEB_LANGS or bool(r["static_ok"]))
     return web_signal
@@ -821,7 +819,7 @@ AI_HINTS = ["claude", "gpt", "cursor", "codex", "copilot", "vibe", "v0.dev",
             "v0 ", "bolt.new", "bolt ", "lovable", "windsurf", "replit agent",
             "ai-generated", "ai generated", "ai-built", "llm", "anthropic", "openai",
             "промпт", "нейросет",
-            # топ-модели
+            # top models
             "qwen", "astra", "fable", "grok", "gemini", "deepseek", "kimi",
             "glm", "minimax", "opus", "sonnet"]
 
@@ -840,22 +838,22 @@ def days_since(iso):
 
 
 def select_candidates(con, cap):
-    """Критерии отбора: СВЕЖЕСТЬ (created) + это веб-игра + AI-ключ. Без звёзд и fitness-гейта.
-    Клоны допускаются. Ранг: свежесть (главное) + AI + рабочий demo."""
+    """Selection criteria: FRESHNESS (created) + it's a web game + AI key. No stars and no fitness gate.
+    Clones are allowed. Rank: freshness (main) + AI + working demo."""
     cand = con.execute(
         "SELECT * FROM repos WHERE scored=1 AND notified=0 AND verdict!='junk'"
     ).fetchall()
     out = []
     for r in cand:
-        if not is_game(r):                 # оставляем только настоящие веб-игры
+        if not is_game(r):                 # keep only real web games
             continue
         age = days_since(r["created_at"])
         is_phys = (r["src_query"] or "") in PHYSICS_SET
         horizon = PHYSICS_CUTOFF_DAYS if is_phys else FRESH_DAYS
-        if age > horizon:                  # свежесть: AI-ключи 4 дня, физ-ключи ~90 дней
+        if age > horizon:                  # freshness: AI keys 4 days, physics keys ~90 days
             continue
-        # 0★ берём, если есть хоть какой сигнал пригодности: demo ИЛИ скрины/медиа
-        # ИЛИ быстро собирается (статика/сборка). Люди часто пушат «для себя» без витрины.
+        # take 0★ if there's at least some signal of viability: demo OR screenshots/media
+        # OR it builds quickly (static/build). People often push "for themselves" without a showcase.
         try:
             has_media = bool(json.loads(r["media"] or "[]"))
         except Exception:
@@ -866,15 +864,15 @@ def select_candidates(con, cap):
             continue
         ai = ai_signal(r)
         vel = velocity(con, r["full_name"])
-        # ранг: чем свежее — тем выше; AI-игры и с demo — вперёд.
-        # свежесть нормируем в единую полосу 0..40, чтобы физ-игры (горизонт 90д)
-        # не забивали AI-свежак и наоборот — сравнение идёт «в своём окне».
+        # rank: the fresher, the higher; AI games and those with a demo go first.
+        # normalize freshness into a single band 0..40 so that physics games (90-day horizon)
+        # don't crowd out fresh AI games and vice versa — comparison happens "within its own window".
         fresh_pts = max(0.0, (horizon - age) / horizon) * 40
         rank = (fresh_pts
                 + (35 if ai else 0)
                 + (20 if r["demo"] else 0)
                 + min(vel, 30) * 1.5
-                + r["fitness"] * 0.1)          # fitness — лишь лёгкий тай-брейк
+                + r["fitness"] * 0.1)          # fitness is just a light tie-breaker
         out.append((rank, vel, r))
     out.sort(key=lambda x: -x[0])
     return out[:cap]
@@ -888,7 +886,7 @@ def digest(con, force_empty=False, cap=DIGEST_MAX):
         print("  digest: нет TELEGRAM_BOT_TOKEN", file=sys.stderr)
         return
     os.makedirs(SHOTS_DIR, exist_ok=True)
-    # чистим скрины старше 2 суток
+    # clean up screenshots older than 2 days
     cutoff = time.time() - 2 * 86400
     for fn in os.listdir(SHOTS_DIR):
         p = os.path.join(SHOTS_DIR, fn)
@@ -902,7 +900,7 @@ def digest(con, force_empty=False, cap=DIGEST_MAX):
         if force_empty:
             tg_send_text(tok, "🎮 VibeGame Radar: за сутки новых подходящих игр не найдено.")
         return
-    if cap >= DIGEST_MAX:     # шапку шлём только у ручного/дневного дайджеста, не в realtime
+    if cap >= DIGEST_MAX:     # send the header only for manual/daily digest, not in realtime
         tg_send_text(tok, f"🎮 <b>VibeGame Radar</b> — {len(rows)} новых кандидатов под Яндекс.Игры 👇")
     posted = 0
     for r, vel in rows:
@@ -973,7 +971,7 @@ def main():
     if args.keys:
         keys_report(con); return
 
-    # действия, которые пишут/постят — только одним инстансом (защита от дублей)
+    # actions that write/post — only by a single instance (protection against duplicates)
     if not acquire_lock():
         print("другой инстанс краулера уже работает — выходим (защита от дублей)", file=sys.stderr)
         return
@@ -986,7 +984,7 @@ def main():
     if args.run or args.enrich:
         enrich(con, token)
     if args.run:
-        digest(con, cap=REALTIME_MAX)   # realtime: постим новые находки сразу
+        digest(con, cap=REALTIME_MAX)   # realtime: post new finds immediately
     if not any([args.run, args.discover, args.enrich]):
         ap.print_help()
 

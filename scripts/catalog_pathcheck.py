@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""
-catalog_pathcheck.py — ищет карточки, у которых path указывает не туда.
+"""catalog_pathcheck.py — finds cards whose path points to the wrong place.
 
-Класс A: path в карточке не содержит index.html, но index.html есть в другом
-         месте папки -> витрина ведёт в 404, хотя игра в папке есть (чинится).
-Класс B: index.html нет нигде в папке -> игра действительно не задеплоена (снос).
-"""
+Class A: path in the card does not contain index.html, but index.html exists elsewhere
+         in the folder -> the storefront leads to a 404, although the game is in the folder (fixable).
+Class B: index.html is nowhere in the folder -> the game is indeed not deployed (remove)."""
 import json
 import os
 
@@ -24,13 +22,13 @@ for g in cat:
     cur = os.path.join(base, path) if path else base
     if os.path.isfile(os.path.join(cur, 'index.html')):
         continue
-    # ищем альтернативы
+    # looking for alternatives
     alts = []
     for root, dirs, files in os.walk(base):
         if 'index.html' in files:
             alts.append(os.path.relpath(root, base))
     if alts:
-        # ближайший к корню
+        # closest to the root
         alts.sort(key=lambda a: (a.count(os.sep), len(a)))
         fixable.append((slug, path, alts[0], len(alts)))
     else:

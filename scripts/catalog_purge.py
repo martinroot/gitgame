@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""
-catalog_purge.py — снос битых/неразмеченных игр из каталога fapa.io/dsgame/catalog.
+"""catalog_purge.py — removal of broken/unmarked games from the fapa.io/dsgame/catalog catalog.
 
-Работает через root-ssh на 127.0.0.1 (как auto_deploy.py / junk_purge.py):
-владелец каталога — www-data, пользователь drogame прав не имеет.
+Works via root-ssh to 127.0.0.1 (like auto_deploy.py / junk_purge.py):
+the catalog owner is www-data, the drogame user has no rights.
 
-Удаляет:
-  * карточки из catalog.json по списку слагов (атомарно, под flock);
-  * папку игры;
-  * превью thumbs/<slug>.jpg.
+Deletes:
+  * cards from catalog.json by a list of slugs (atomically, under flock);
+  * the game folder;
+  * the preview thumbs/<slug>.jpg.
 
-Перед правкой catalog.json делает бэкап catalog.json.bak-<ts>.
+Before modifying catalog.json, makes a backup catalog.json.bak-<ts>.
 
   python3 catalog_purge.py --dry --slugs a,b --unmarked
-  python3 catalog_purge.py --slugs a,b --unmarked
-"""
+  python3 catalog_purge.py --slugs a,b --unmarked"""
 import argparse
 import base64
 import json
@@ -33,7 +31,7 @@ def ssh(cmd, t=180):
         capture_output=True, text=True, timeout=t, env={**os.environ, 'SSHPASS': FAPA_PASS})
 
 
-# Атомарная правка catalog.json под flock + удаление папок/превью — одним PHP.
+# Atomic edit of catalog.json under flock + deletion of folders/previews — in a single PHP.
 PHP = r'''<?php
 $dir = "%s";
 $rm = json_decode(base64_decode("%s"), true);
@@ -85,14 +83,14 @@ def catalog():
 
 
 def unmarked_dirs():
-    """Папки игр без карточки в catalog.json (бэкапы/файлы — не папки игр)."""
+    """Game folders without a card in catalog.json (backups/files are not game folders)."""
     slugs = {g.get('slug', '') for g in catalog()}
     out = ssh('find %s -mindepth 1 -maxdepth 1 -type d -printf "%%f\\n"' % FAPA_CAT).stdout.split()
     return [n for n in out if n and n != 'thumbs' and n not in slugs]
 
 
 def dir_state(slug):
-    """Что реально лежит в папке на сервере."""
+    """What is actually in the folder on the server."""
     out = ssh('ls -1 %s/%s 2>/dev/null | head -3' % (FAPA_CAT, slug)).stdout.strip()
     n = ssh('find %s/%s -type f 2>/dev/null | wc -l' % (FAPA_CAT, slug)).stdout.strip()
     sz = ssh('du -sm %s/%s 2>/dev/null | cut -f1' % (FAPA_CAT, slug)).stdout.strip()

@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""
-catalog_servercheck.py — авторитетная проверка на САМОМ сервере (root-ssh).
+"""catalog_servercheck.py — authoritative check on the ACTUAL server (root-ssh).
 
-Для каждой карточки: есть ли файл {slug}/{path}index.html и что в папке.
-Один ssh-вызов на всё (find), разбор — локально. Точнее HTTP: не зависит от
-nginx-кэша, сетевых штук и веб-сервера.
-"""
+For each card: whether the file {slug}/{path}index.html exists and what is in the folder.
+One ssh call for everything (find), parsing is local. More accurate than HTTP: does not depend
+on the nginx cache, network stuff, or the web server."""
 import json
 import os
 import re
@@ -25,7 +23,7 @@ def main():
     with open(os.path.join(CAT, 'catalog.json'), encoding='utf-8') as fh:
         cat = json.load(fh)
 
-    # Один проход: все index.html в каталоге + список всех папок верхнего уровня
+    # One pass: all index.html files in the catalog + a list of all top-level folders
     out = ssh('find %s -maxdepth 4 -name index.html -printf "%%P\\n"' % CAT).stdout
     idx = set(out.split())
     out2 = ssh('find %s -mindepth 1 -maxdepth 1 -type d -printf "%%f\\n"' % CAT).stdout
@@ -50,7 +48,7 @@ def main():
             bad.append(r)
             continue
         if rel not in idx:
-            # ищем index.html в других местах папки (может быть сломан только path)
+            # look for index.html elsewhere in the folder (only path may be broken)
             alts = sorted(x for x in idx if x.startswith(slug + '/') and x.endswith('index.html'))
             r['alts'] = alts[:3]
             r['why'] = 'no-index-at-path'

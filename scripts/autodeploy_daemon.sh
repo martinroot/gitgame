@@ -1,5 +1,5 @@
 #!/bin/bash
-# непрерывный автодеплой: одна копия демона (flock), волны back-to-back
+#continuous autodeploy: a single copy of the daemon (flock), back-to-back waves
 exec 9>/home/drogame/build/.autodeploy_daemon.lock
 flock -n 9 || exit 0
 export PATH="$HOME/.bun/bin:$PATH"

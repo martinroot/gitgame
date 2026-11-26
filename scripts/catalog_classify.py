@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""
-catalog_classify.py — сводит результаты проверок в решение по каждому слагу.
+"""catalog_classify.py — consolidates check results into a decision for each slug.
 
-Правила (в порядке приоритета):
-  404 / 403 / no-index / empty-dir      -> BROKEN   (снос)
-  blank + DOM пустой (403/404 в DOM)     -> BROKEN   (снос)
-  blank + DOM живой (текст/canvas)       -> OK       (оставить: тёмный кадр = ложное срабатывание)
-  no-shot после ретрая                    -> SUSPECT  (решает DOM-зонд)
-  http ok / render ok                     -> OK
+Rules (in priority order):
+  404 / 403 / no-index / empty-dir      -> BROKEN   (remove)
+  blank + empty DOM (403/404 in DOM)     -> BROKEN   (remove)
+  blank + live DOM (text/canvas)         -> OK       (keep: dark frame = false positive)
+  no-shot after retry                    -> SUSPECT  (decided by the DOM probe)
+  http ok / render ok                    -> OK
 
-Вход: catalog_render.json (основной), catalog_http.json (http), catalog_retry.json (ретрай no-shot),
-      noshot_probe.log (DOM-зонд no-shot).
-Выход: catalog_decision.json + текстовый список.
-"""
+Input: catalog_render.json (main), catalog_http.json (http), catalog_retry.json (no-shot retry),
+      noshot_probe.log (no-shot DOM probe).
+Output: catalog_decision.json + a text list."""
 import json
 import os
 import re
@@ -37,7 +35,7 @@ def main():
     http = load('catalog_http.json')
     retry = load('catalog_retry.json')
 
-    # DOM-зонд: slug -> (dom_bytes, text)
+    # DOM probe: slug -> (dom_bytes, text)
     dom = {}
     p = os.path.join(BUILD, 'noshot_probe.log')
     if os.path.isfile(p):
@@ -64,7 +62,7 @@ def main():
         hprobs = list(http.get(s, {}).get('problems') or [])
         rprobs = list(retry.get(s, {}).get('problems') or [])
         if s in retry:
-            # слаги из ретрая: его вердикт authoritative, даже если пустой (выздоровели)
+            # slugs from the retry: its verdict is authoritative, even if empty (they recovered)
             probs = rprobs
         hard = [p for p in probs + hprobs
                 if p.startswith(('http-', 'no-index', 'no-dir', 'empty-dir'))]

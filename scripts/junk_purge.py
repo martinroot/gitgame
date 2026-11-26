@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""
-junk_purge.py — авто-отсев шлака: свежий ре-рендер каждой игры каталога.
-Битой считается игра, у которой скрин ПУСТОЙ (почти однотонный = не отрисовалась)
-ИЛИ есть фатальная JS-ошибка в консоли. Такие удаляются из каталога (catalog.json + папка + превью).
+"""junk_purge.py — auto-purge of junk: a fresh re-render of every game in the catalog.
+A game is considered broken if its screenshot is EMPTY (nearly solid color = didn't render)
+OR there is a fatal JS error in the console. Such games are removed from the catalog (catalog.json + folder + preview).
 
-  python3 junk_purge.py --dry [--limit N]   # только показать, что попадёт под нож
-  python3 junk_purge.py                      # реально удалить битые
-"""
+  python3 junk_purge.py --dry [--limit N]   # only show what will get the axe
+  python3 junk_purge.py                      # actually delete the broken ones"""
 import argparse, base64, json, os, re, subprocess, sys, time
 from collections import Counter
 from PIL import Image
@@ -45,14 +43,14 @@ def is_blank(png):
         g = [(r*299+gr*587+b*114)//1000 for r, gr, b in px]
         m = sum(g)/n; std = (sum((x-m)**2 for x in g)/n)**0.5
         dom = Counter((r>>4, gr>>4, b>>4) for r, gr, b in px).most_common(1)[0][1]/n
-        # СТРОГО: только по-настоящему пустая страница (почти один цвет), чтобы не задеть
-        # тёмные игры и «клик-чтобы-старт» (у них тёмный, но не однотонный кадр)
+        # STRICT: only a truly empty page (almost a single color), so as not to touch
+        # dark games and "click-to-start" ones (their frame is dark, but not solid-color)
         return (std < 4.5 and dom > 0.95), round(std, 1), round(dom, 2)
     except Exception:
         return None, 0, 0
 
 def check(g):
-    """Возвращает (broken:bool, reason:str)."""
+    """Returns (broken:bool, reason:str)."""
     slug = g['slug']; path = g.get('path', '')
     url = f'{PUB}/{slug}/{path}'
     prof = f'/tmp/.jp{os.getpid()}_{int(time.time()*1000)}'
@@ -70,7 +68,7 @@ def check(g):
     subprocess.run(f'rm -rf {prof}', shell=True)
     broken, reason = False, 'ok'
     if not (os.path.exists(png) and os.path.getsize(png) > 2000):
-        reason = 'no-shot'          # ничего не отрисовалось — не удаляем (может транзиент)
+        reason = 'no-shot'          # nothing rendered — don't delete (may be transient)
     else:
         bl, std, dom = is_blank(png)
         if bl:
@@ -88,7 +86,7 @@ def check(g):
     return broken, reason
 
 def purge(slugs):
-    """Удалить список слагов из fapa catalog.json (flock) + папки + превью."""
+    """Delete a list of slugs from the fapa catalog.json (flock) + folders + previews."""
     sb = base64.b64encode(json.dumps(slugs).encode()).decode()
     php = ('<?php $dir="%s"; $f="$dir/catalog.json"; $fh=fopen($f,"c+"); flock($fh,LOCK_EX); '
            '$c=json_decode(stream_get_contents($fh),true); if(!is_array($c))$c=[]; '
