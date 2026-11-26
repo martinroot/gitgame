@@ -18,9 +18,9 @@ PRICES = os.environ.get('PRICES_JSON', '/var/www/gitgame.live/api/prices.json')
 SITE = 'https://gitgame.live'
 
 
-def short(text, limit=170):
+def short(text, limit=70):
     text = html.unescape(re.sub(r'<[^>]+>', ' ', text or '')).replace('\n', ' ').strip()
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).replace('|', '/')
     if len(text) > limit:
         text = text[:limit].rsplit(' ', 1)[0] + '…'
     return text or 'HTML5-игра с исходниками.'
@@ -49,24 +49,26 @@ def main():
         '',
         'Каталог HTML5-игр с готовыми веб-сборками и исходниками. Сайт: https://gitgame.live',
         '',
-        f'**{len(rows)} игр** с ручной оценкой, отсортированы как на сайте: по звёздам, затем по цене и названию.',
+        f'**{len(rows)} игр** с ручной оценкой. Сортировка как на сайте: по звёздам, затем по цене и названию.',
         '',
         '## Каталог игр',
         '',
+        '| | | | |',
+        '|---|---|---|---|',
     ]
+    cells = []
     for stars, price, title, slug, desc, source, image in rows:
-        out.append(f'### {"★" * stars}{"☆" * (5 - stars)} {title} — ${price:.2f}')
-        out.append('')
-        if image:
-            out.append(f'![{title}]({image})')
-            out.append('')
-        out.append(desc)
-        out.append('')
-        links = [f'[Игра на GitGame]({SITE}/game/{slug}/)']
+        name = html.escape(title.replace('|', '/'))
+        img = f'<img src="{image}" width="150" alt="{name}"><br>' if image else ''
+        links = f'[▶]({SITE}/game/{slug}/)'
         if source.startswith('https://github.com/'):
-            links.append(f'[Репозиторий]({source})')
-        out.append(' · '.join(links))
-        out.append('')
+            links += f' · [GitHub]({source})'
+        cells.append(f'{img}<b>{"★" * stars}{"☆" * (5 - stars)} {name}</b><br>{desc}<br>{links}')
+        if len(cells) == 4:
+            out.append('| ' + ' | '.join(cells) + ' |')
+            cells = []
+    if cells:
+        out.append('| ' + ' | '.join(cells + [''] * (4 - len(cells))) + ' |')
     (ROOT / 'README.md').write_text('\n'.join(out) + '\n')
     print(f'README.md: {len(rows)} games')
 
