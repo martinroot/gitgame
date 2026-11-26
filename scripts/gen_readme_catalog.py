@@ -69,22 +69,26 @@ def main():
         '',
         '## Game catalog',
         '',
-        '| | | | |',
-        '|---|---|---|---|',
+        '| | | |',
+        '|---|---|---|',
     ]
-    cells = []
+    group = []
     for stars, price, title, slug, desc, source, image in rows:
         name = html.escape(title.replace('|', '/'))
-        img = f'<img src="{image}" width="150" alt="{name}"><br>' if image else ''
+        img = (f'<img src="{image}" width="200" height="120" alt="{name}">'
+               if image else '<sub>No preview</sub>')
         links = f'[Play]({SITE}/game/{slug}/)'
         if source.startswith('https://github.com/'):
             links += f' · [GitHub]({source})'
-        cells.append(f'{img}<b>{"★" * stars}{"☆" * (5 - stars)} {name}</b><br>{desc}<br>{links}')
-        if len(cells) == 4:
-            out.append('| ' + ' | '.join(cells) + ' |')
-            cells = []
-    if cells:
-        out.append('| ' + ' | '.join(cells + [''] * (4 - len(cells))) + ' |')
+        group.append((img, f'<b>{"★" * stars}{"☆" * (5 - stars)} {name}</b><br>{desc}<br>{links}'))
+        if len(group) == 3:
+            out.append('| ' + ' | '.join(x[0] for x in group) + ' |')
+            out.append('| ' + ' | '.join(x[1] for x in group) + ' |')
+            group = []
+    if group:
+        group += [('<sub>No preview</sub>', '')] * (3 - len(group))
+        out.append('| ' + ' | '.join(x[0] for x in group) + ' |')
+        out.append('| ' + ' | '.join(x[1] for x in group) + ' |')
     (ROOT / 'README.md').write_text('\n'.join(out) + '\n')
     print(f'README.md: {len(rows)} games')
 
