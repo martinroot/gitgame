@@ -62,7 +62,7 @@ def main():
         '- `scripts/junk_purge.py`, `scripts/catalog_*.py` — catalog cleanup and checks (headless Chrome)',
         '- `scripts/gitgame_gen.py` — gitgame.live storefront generator (EN/DE/KR/RU/AR)',
         '- `scripts/gen_gitgame_prices.py` — export catalog prices to `api/prices.json` for checkout',
-        '- `web/api/*.php` — DV-merchant crypto billing: checkout, webhook, order status',
+        '- `web/api/*.php` — DV-merchant crypto billing: cart checkout, webhook, order status, account recovery and paid source downloads',
         '- `scripts/gen_readme_catalog.py` — regenerate this README from catalog data',
         '',
         'Regenerate with `python3 scripts/gen_readme_catalog.py`. Paths can be overridden via `CATALOG_JSON`, `RATINGS_JSON`, `PRICES_JSON`, `SITE_THUMBS`. Secrets come from the environment (`FAPA_PASS`, `GITHUB_TOKEN`) and are not stored in this repo.',

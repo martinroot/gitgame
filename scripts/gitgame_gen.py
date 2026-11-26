@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Showcase generator for gitgame.live — a catalog of games with prices (stars → price).
-Multilanguage: EN (default) / DE / KR / RU / AR (RTL), i18n on the client.
+"""Showcase generator for gitgame.live — catalog with prices (stars → price).
+Multilanguage: EN (default) / DE / KR / RU / AR (RTL), client-side i18n.
 Cards: size, stack, AI brand, Play + Buy buttons."""
 import json, os, html, hashlib, re
 
 CAT = '/var/www/fapa.io/dsgame/catalog/catalog.json'
 RATINGS = '/var/www/fapa.io/dsgame/catalog/ratings.json'
 OUT = '/var/www/gitgame.live'
-CONTACT = 'https://t.me/martinroot'   # TODO: contact confirmation for purchases
+CONTACT = 'https://t.me/martinroot'   # TODO: confirm contact details for purchases
 PLAY_BASE = 'https://fapa.io/dsgame/catalog/'
 
 BASE = {5: 1.50, 4: 1.00, 3: 0.70, 2: 0.30, 1: 0.10}
@@ -26,7 +26,7 @@ GENRE_MAP = {
     '@babylonjs/core': '3d',
     'Canvas2D': '2d', 'Canvas': '2d', 'phaser': '2d', 'pixi.js': '2d',
 }
-# AI brand based on mention in title/desc/source
+# AI brand based on a mention in title/desc/source
 AI_BRANDS = [('astra', 'Astra'), ('gpt', 'GPT'), ('claude', 'Claude'),
              ('gemini', 'Gemini'), ('grok', 'Grok'), ('deepseek', 'DeepSeek')]
 TECH = {'three', 'Three.js', 'phaser', 'pixi.js', 'webgl', 'Canvas', 'Canvas2D',
@@ -55,16 +55,16 @@ def h(s):
 
 def stars_for(slug, tags, ratings):
     # Real rating from ratings.json (manual scores in the catalog admin)
-    # ⭐0/⭐1 in tags — junk_purge marker (review status), NOT a rating
+    # ⭐0/⭐1 tags — junk_purge markers (review status), NOT a rating
     if slug in ratings:
         return int(ratings[slug])
-    return 2   # unrated ones — default 2★ ($0.30)
+    return 2   # unrated games — default 2★ ($0.30)
 
 def price_for(slug, st):
     base = BASE[st]
     jitter = (h('price' + slug) % 7) - 3   # -3..+3
     p = round((base + jitter * 0.05) * 20) / 20
-    return max(p, base)   # don't go below the base price
+    return max(p, base)   # never below the base price
 
 def esc(s):
     return html.escape(str(s), quote=True)
@@ -92,7 +92,7 @@ def load():
     for g in games:
         slug = g.get('slug', '').strip()
         if not slug: continue
-        if slug not in ratings: continue   # no stars — don't show in the catalog
+        if slug not in ratings: continue   # no stars — do not show in the catalog
         tags = g.get('tags', []) or []
         st = stars_for(slug, tags, ratings)
         thumb = g.get('thumb', '')
@@ -103,7 +103,7 @@ def load():
             'desc': g.get('desc', ''),
             'tags': [t for t in tags if t not in SKIP_TAG],
             'genre': genre_of(tags),
-            'touch': 'touch' in tags,
+            'touch': 'тач' in tags,
             'stars': st,
             'price': price_for(slug, st),
             'thumb': thumb if has_thumb else '',
@@ -218,6 +218,103 @@ footer b{color:var(--txt)}
 .mbox .btn:hover{background:#8a7dff}
 """
 
+CART_JS = '''<script>
+(function(){
+const KEY='gg_cart';
+const read=()=>{try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}};
+const save=a=>{localStorage.setItem(KEY,JSON.stringify(a));btn()};
+const money=n=>'$'+Number(n).toFixed(2);
+function btn(){
+  let b=document.getElementById('ggcartbtn');
+  if(!b && document.querySelector('.hwrap')){
+    b=document.createElement('button');b.id='ggcartbtn';
+    b.style.cssText='margin-left:12px;padding:7px 12px;border-radius:9px;border:1px solid var(--line);background:var(--card2);color:var(--txt);cursor:pointer;font-weight:700';
+    b.onclick=()=>window.ggOpenCart();
+    const lang=document.querySelector('.lang');
+    if(lang)lang.before(b);else document.querySelector('.hwrap').appendChild(b);
+  }
+  if(b)b.textContent='🛒 Cart ('+read().length+')';
+}
+function shell(){
+  let s=document.getElementById('ggcart');
+  if(!s){
+    s=document.createElement('div');s.id='ggcart';
+    s.innerHTML='<div id="ggcm" style="position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:200;padding:20px"><div style="background:var(--bg2,#151522);border:1px solid var(--line,#333);border-radius:16px;padding:24px;max-width:560px;width:100%;max-height:88vh;overflow:auto"><h3 style="margin:0 0 12px">🛒 Cart</h3><div id="ggclist"></div><p style="font-size:13px;color:var(--mut,#aaa);margin:12px 0">Email is used to recover your order and download paid sources later.</p><input id="ggcmail" type="email" placeholder="you@example.com" style="width:100%;box-sizing:border-box;padding:11px;border-radius:9px;border:1px solid var(--line,#333);background:var(--card2,#222);color:var(--txt,#fff)"><div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"><button id="ggcpay" style="padding:11px 18px;border:none;border-radius:9px;background:var(--acc,#7c6cff);color:#fff;font-weight:700;cursor:pointer">Pay with crypto</button><button onclick="ggCloseCart()" style="padding:11px 18px;border-radius:9px;border:1px solid var(--line,#333);background:transparent;color:var(--txt,#fff);cursor:pointer">Close</button><a href="/account/" style="padding:11px 6px;color:var(--acc2,#54e0c4)">My orders →</a></div><p id="ggcmmsg" style="font-size:13px;color:#8a7dff;min-height:1em"></p></div></div>';
+    document.body.appendChild(s);
+    s.querySelector('#ggcm').addEventListener('click',e=>{if(e.target.id==='ggcm')ggCloseCart()});
+    s.querySelector('#ggcpay').onclick=pay;
+  }
+  return s;
+}
+function render(){
+  const a=read(),c=shell();
+  c.querySelector('#ggclist').innerHTML=a.length?a.map(x=>
+    '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line,#333);font-size:14px"><span>'+x.title.replace(/[<>]/g,'')+'</span><span>'+money(x.price)+' <button data-slug="'+x.slug+'" style="background:none;border:none;color:#ff7b7b;cursor:pointer">✕</button></span></div>').join('')
+    +'<p style="margin:12px 0;font-weight:700">Total: '+money(a.reduce((s,x)=>s+x.price,0))+'</p>'
+    :'<p style="color:var(--mut,#aaa)">Your cart is empty.</p>';
+  c.querySelectorAll('[data-slug]').forEach(b=>b.onclick=()=>{
+    save(read().filter(x=>x.slug!==b.dataset.slug));render();
+  });
+}
+window.ggOpenCart=function(){render();shell().querySelector('#ggcm').style.display='flex'};
+window.ggCloseCart=function(){shell().querySelector('#ggcm').style.display='none'};
+window.ggAdd=function(slug,title,price){
+  const a=read();
+  if(!a.some(x=>x.slug===slug))a.push({slug,title,price:Number(price)});
+  save(a);ggOpenCart();
+};
+async function pay(){
+  const a=read(),m=shell().querySelector('#ggcmmsg'),b=shell().querySelector('#ggcpay');
+  if(!a.length){m.textContent='Cart is empty';return}
+  const email=shell().querySelector('#ggcmail').value.trim();
+  if(!email.includes('@')){m.textContent='Enter a valid email';return}
+  b.disabled=true;m.textContent='Creating order…';
+  try{
+    const r=await fetch('/api/checkout.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slugs:a.map(x=>x.slug),email})});
+    const d=await r.json();
+    if(!d.pay_url){m.textContent=d.error||'Error, try later';b.disabled=false;return}
+    localStorage.removeItem(KEY);btn();render();
+    m.innerHTML='Order <b>'+d.order_id+'</b> · '+money(d.amount)+'<br><a href="'+d.pay_url+'" style="color:#8a7dff;font-weight:700">Continue to payment →</a><br><small>Save this order ID and email — they restore access in My orders.</small>';
+  }catch(e){m.textContent='Network error';b.disabled=false}
+}
+btn();
+})();
+</script>
+'''
+
+ACCOUNT_PAGE = '''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My orders — GitGame</title>
+<style>
+body{margin:0;background:#0e0e14;color:#eee;font:15px/1.5 system-ui,sans-serif;padding:30px;max-width:820px;margin:auto}
+h1{font-size:26px}a{color:#8a7dff}label{display:block;margin:12px 0 5px;color:#aaa;font-size:13px}
+input{width:100%;box-sizing:border-box;padding:11px;border-radius:9px;border:1px solid #333;background:#1a1a24;color:#fff}
+button{margin-top:14px;padding:11px 20px;border:none;border-radius:9px;background:#7c6cff;color:#fff;font-weight:700;cursor:pointer}
+.order{border:1px solid #333;border-radius:14px;padding:16px;margin:16px 0;background:#15151f}
+.ok{color:#54e0c4}.pending{color:#ffc46b}.dl{display:inline-block;margin:8px 10px 0 0;padding:8px 12px;border-radius:8px;background:#222;color:#8a7dff;text-decoration:none}
+</style><script defer src="https://vibemetrics.click/tracker.js" data-site-id="gitgame-live" data-site-key="oGgU9fnoaeKVhaHpVSN4IkDU21Li_bqUuRTPoYVC4fY"></script></head><body>
+<p><a href="/">← GitGame catalog</a></p><h1>My orders</h1>
+<p>Enter the order ID from checkout and the email used for that order. Your paid games and source downloads stay here — losing the payment tab does not lose the order.</p>
+<form id="f"><label for="o">Order ID</label><input id="o" placeholder="gg-xxxxxxxxxxxx" required>
+<label for="e">Email</label><input id="e" type="email" placeholder="you@example.com" required>
+<button type="submit">Find order</button></form><div id="out"></div>
+<script>
+const q=new URLSearchParams(location.search);
+document.getElementById('o').value=q.get('order')||'';
+document.getElementById('e').value=q.get('email')||'';
+document.getElementById('f').onsubmit=async ev=>{
+  ev.preventDefault();const out=document.getElementById('out');out.textContent='Searching…';
+  try{
+    const r=await fetch('/api/account.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:document.getElementById('o').value.trim(),email:document.getElementById('e').value.trim()})});
+    const d=await r.json();
+    if(!r.ok){out.textContent=d.error||'Order not found';return}
+    out.innerHTML='<div class="order"><b>'+d.order_id+'</b> · <span class="'+(d.status==='paid'?'ok':'pending')+'">'+d.status+'</span> · $'+Number(d.amount_usd).toFixed(2)+'<br>'+d.items.map(i=>i.slug+' $'+Number(i.price).toFixed(2)).join('<br>')+(d.downloads?('<br><br><b>Downloads:</b><br>'+d.downloads.map(x=>'<a class="dl" href="'+x.url+'">↓ '+x.slug+'</a>').join('')):('<br><br>Payment not confirmed yet. Reload this page after paying.'))+'</div>';
+  }catch(e){out.textContent='Network error'}
+};
+if(document.getElementById('o').value&&document.getElementById('e').value)document.getElementById('f').requestSubmit();
+</script></body></html>
+'''
+
 # ---------- i18n ----------
 I18N = {
  'en': {
@@ -290,27 +387,27 @@ I18N = {
    'openworld': '오픈월드', '3d': '3D', '2d': '2D'},
  },
  'ru': {
-  'title': 'GitGame — a catalog of HTML5 games with source code',
-  'desc': 'A catalog of {n} HTML5 games with a ready web version and source code. Buy from ${min:.2f}.',
-  'games': 'games', 'games_in_catalog': 'games in the catalog', 'from': 'from',
-  'search': 'Search by title or description…',
-  'sort_top': 'Top first', 'sort_priceUp': 'Price ↑', 'sort_priceDown': 'Price ↓',
-  'sort_name': 'By name', 'sort_new': 'Newest',
-  'allstars': 'All ★', 'touch': '📱 Touch', 'allgenres': 'All genres',
-  'nothing': 'Nothing found — try another filter',
-  'buy': 'Buy', 'play': '▶ Play', 'buy_for': 'Buy for ${p:.2f}',
-  'size': 'Size', 'stack': 'Stack', 'added': 'Added', 'ai': 'AI',
-  'footer': 'GitGame — an HTML5 games marketplace: {n} games with a ready web version and source code. License included.',
-  'footer2': 'GitGame — an HTML5 games marketplace. A license is included with every purchase.',
-  'back': '← Back to catalog', 'modal_title': 'Checkout',
-  'modal_body': '«{t}» — ${p:.2f}<br>Pay with cryptocurrency (BTC/ETH/USDT…). Source code and license will be unlocked automatically after payment.',
-  'modal_pay': 'Pay with cryptocurrency', 'modal_later': 'Later',
-  'ratings': 'Rating', 'generated': 'web version',
-  'genres': {'other': 'Other', 'shooter': 'Shooter', 'action': 'Action', 'racing': 'Racing',
-   'puzzle': 'Puzzle', 'strategy': 'Strategy', 'farm': 'Farm', 'sport': 'Sports',
-   'arcade': 'Arcade', 'builder': 'Builder', 'runner': 'Runner', 'fishing': 'Fishing',
-   'casual': 'Casual', 'management': 'Management', 'tycoon': 'Tycoon',
-   'openworld': 'Open world', '3d': '3D', '2d': '2D'},
+  'title': 'GitGame — каталог HTML5-игр с исходниками',
+  'desc': 'Каталог из {n} HTML5-игр с готовой веб-версией и исходниками. Купить от ${min:.2f}.',
+  'games': 'игр', 'games_in_catalog': 'игр в каталоге', 'from': 'от',
+  'search': 'Поиск по названию или описанию…',
+  'sort_top': 'Сначала топ', 'sort_priceUp': 'Цена ↑', 'sort_priceDown': 'Цена ↓',
+  'sort_name': 'По имени', 'sort_new': 'Новые',
+  'allstars': 'Все ★', 'touch': '📱 Тач', 'allgenres': 'Все жанры',
+  'nothing': 'Ничего не найдено — попробуйте другой фильтр',
+  'buy': 'Купить', 'play': '▶ Играть', 'buy_for': 'Купить за ${p:.2f}',
+  'size': 'Размер', 'stack': 'Стек', 'added': 'Добавлена', 'ai': 'AI',
+  'footer': 'GitGame — маркетплейс HTML5-игр: {n} игр с готовой веб-версией и исходниками. Лицензия прилагается.',
+  'footer2': 'GitGame — маркетплейс HTML5-игр. Лицензия прилагается к каждой покупке.',
+  'back': '← Назад в каталог', 'modal_title': 'Оформление покупки',
+  'modal_body': '«{t}» — ${p:.2f}<br>Оплата криптовалютой (BTC/ETH/USDT…). Исходники и лицензия откроются автоматически после оплаты.',
+  'modal_pay': 'Оплатить криптовалютой', 'modal_later': 'Позже',
+  'ratings': 'Рейтинг', 'generated': 'веб-версия',
+  'genres': {'other': 'Прочее', 'shooter': 'Шутер', 'action': 'Экшн', 'racing': 'Гонки',
+   'puzzle': 'Головоломка', 'strategy': 'Стратегия', 'farm': 'Ферма', 'sport': 'Спорт',
+   'arcade': 'Аркада', 'builder': 'Билдер', 'runner': 'Раннер', 'fishing': 'Рыбалка',
+   'casual': 'Казуальная', 'management': 'Менеджмент', 'tycoon': 'Тайкун',
+   'openworld': 'Открытый мир', '3d': '3D', '2d': '2D'},
  },
  'ar': {
   'title': 'GitGame — كتالوج ألعاب HTML5 مع الكود المصدري',
@@ -339,7 +436,7 @@ I18N = {
 LANGS = ['en', 'de', 'kr', 'ru', 'ar']
 LANG_LABEL = {'en': 'EN', 'de': 'DE', 'kr': 'KR', 'ru': 'RU', 'ar': 'AR'}
 
-# JS i18n runtime: substitutes strings via data-i18n, dir=rtl for AR, slangy genre translations
+# JS i18n runtime: подставляет строки по data-i18n, dir=rtl для AR, жаргонные переводы жанров
 JS_I18N = """
 const L=%s;
 const DIRS={ar:'rtl'};
@@ -398,7 +495,7 @@ def game_page(g, total):
 <div class="modal" id="m" onclick="if(event.target===this)closeModal()">
 <div class="mbox"><h3 data-i18n="modal_title">Checkout</h3>
 <p>«{esc(g["title"])}» — ${g["price"]:.2f}<br><span data-i18n="modal_body">Pay with crypto (BTC/ETH/USDT…). Sources and license are unlocked automatically after payment.</span></p>
-<button class="btn" id="paybtn" onclick="pay('{esc(g["slug"])}')" data-i18n="modal_pay">Pay with crypto</button>
+<button class="btn" id="paybtn" onclick="ggAdd('{esc(g["slug"])}',this.dataset.title,{g["price"]:.2f})" data-title="{esc(g["title"])}">Add to cart</button>
 <button class="btn alt" onclick="closeModal()" data-i18n="modal_later">Later</button>
 <p id="paymsg" style="color:#8a7dff;font-size:13px;min-height:1em"></p></div></div>
 <script>{JS_I18N}
@@ -415,7 +512,7 @@ function openModal(){{document.getElementById('m').classList.add('open')}}
 function closeModal(){{document.getElementById('m').classList.remove('open')}}
 document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeModal()}})
 applyLang()
-</script>
+</script>{CART_JS}
 </body></html>'''
 
 def main():
@@ -467,7 +564,7 @@ return `<div class="card"><a href="/game/${{g.slug}}/"><div class="thumb">${{th}
 <div class="ctags">${{g.tags.map(t=>`<span>${{esc(t)}}</span>`).join('')}}<span data-genre="${{esc(g.genre)}}">${{esc(g.genre)}}</span></div>
 <div class="crow"><span class="cprice">$${{g.price.toFixed(2)}}</span><div class="cbtns">
 ${{g.play?`<button class="cplay" onclick="window.open('{PLAY_BASE}${{g.slug}}/','_blank')"><span data-i18n="play">Play</span></button>`:''}}
-<button class="cbuy" onclick="location.href='/game/${{g.slug}}/'" data-i18n="buy">Buy</button></div></div></div></div>`}}
+<button class="cbuy" onclick="ggAdd('${{g.slug}}',this.dataset.title,${{g.price}})" data-title="${{esc(g.title)}}" data-i18n="buy">Buy</button></div></div></div></div>`}}
 function render(){{
 let r=D.filter(g=>
 (flt.genre==='all'||g.genre===flt.genre)&&
@@ -493,9 +590,12 @@ document.getElementById('touch').addEventListener('click',e=>{{flt.touch=!flt.to
 document.getElementById('sort').addEventListener('change',e=>{{flt.sort=e.target.value;render()}});
 render();
 applyLang();
-</script></body></html>'''
+</script>{CART_JS}</body></html>'''
     with open(os.path.join(OUT, 'index.html'), 'w') as f:
         f.write(idx)
+    os.makedirs(os.path.join(OUT, 'account'), exist_ok=True)
+    with open(os.path.join(OUT, 'account', 'index.html'), 'w') as f:
+        f.write(ACCOUNT_PAGE)
     n = 0
     for g in games:
         d = os.path.join(OUT, 'game', g['slug'])
@@ -503,7 +603,7 @@ applyLang();
         with open(os.path.join(d, 'index.html'), 'w') as f:
             f.write(game_page(g, total))
         n += 1
-    print(f'OK: index + {n} game pages, {total} игр (EN/DE/KR/RU/AR)')
+    print(f'OK: index + {n} game pages, {total} games (EN/DE/KR/RU/AR)')
 
 if __name__ == '__main__':
     main()
