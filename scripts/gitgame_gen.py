@@ -96,6 +96,8 @@ def load():
         tags = g.get('tags', []) or []
         st = stars_for(slug, tags, ratings)
         thumb = g.get('thumb', '')
+        if not thumb and os.path.exists(os.path.join(OUT, 'thumbs', slug + '.jpg')):
+            thumb = 'thumbs/' + slug + '.jpg'   # fallback when catalog metadata loses the path
         has_thumb = os.path.exists(os.path.join(OUT, thumb)) if thumb else False
         out.append({
             'slug': slug,

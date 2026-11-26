@@ -40,6 +40,9 @@ def main():
         stars = max(0, min(5, int(ratings[slug])))
         price = float(prices.get(slug, {5: 1.50, 4: 1.00, 3: 0.70, 2: 0.30, 1: 0.10}.get(stars, 0.30)))
         thumb = g.get('thumb') or ''
+        if not thumb or not (THUMBS / 'thumbs' / Path(thumb).name).exists():
+            if (THUMBS / 'thumbs' / (slug + '.jpg')).exists():
+                thumb = 'thumbs/' + slug + '.jpg'
         thumb_name = Path(thumb).name if thumb else ''
         image = f'{SITE}/thumbs/{thumb_name}' if thumb_name and (THUMBS / 'thumbs' / thumb_name).exists() else None
         desc = en_desc.get(slug) or g.get('desc') or ''
@@ -64,6 +67,7 @@ def main():
         '- `scripts/gen_gitgame_prices.py` — export catalog prices to `api/prices.json` for checkout',
         '- `web/api/*.php` — DV-merchant crypto billing: cart checkout, webhook, order status, account recovery and paid source downloads',
         '- `scripts/gen_readme_catalog.py` — regenerate this README from catalog data',
+        '- `scripts/repair_catalog_thumbs.py` — restore missing catalog thumb paths from site JPEGs',
         '',
         'Regenerate with `python3 scripts/gen_readme_catalog.py`. Paths can be overridden via `CATALOG_JSON`, `RATINGS_JSON`, `PRICES_JSON`, `SITE_THUMBS`. Secrets come from the environment (`FAPA_PASS`, `GITHUB_TOKEN`) and are not stored in this repo.',
         '',
