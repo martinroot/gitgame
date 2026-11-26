@@ -27,6 +27,18 @@ def short(text, limit=70):
     return text or 'HTML5 game with source code.'
 
 
+def image_url(slug, thumb, thumbs=THUMBS):
+    """Resolve a game image: explicit catalog path, then <slug>.jpg, else None."""
+    name = Path(thumb).name if thumb else ''
+    candidates = [name] if name else []
+    candidates.append(slug + '.jpg')
+    for candidate in candidates:
+        path = thumbs / 'thumbs' / candidate
+        if path.exists():
+            return f'{SITE}/thumbs/{candidate}'
+    return None
+
+
 def main():
     games = json.load(open(CAT))
     ratings = json.load(open(RATINGS)) if os.path.exists(RATINGS) else {}
@@ -39,12 +51,7 @@ def main():
             continue
         stars = max(0, min(5, int(ratings[slug])))
         price = float(prices.get(slug, {5: 1.50, 4: 1.00, 3: 0.70, 2: 0.30, 1: 0.10}.get(stars, 0.30)))
-        thumb = g.get('thumb') or ''
-        if not thumb or not (THUMBS / 'thumbs' / Path(thumb).name).exists():
-            if (THUMBS / 'thumbs' / (slug + '.jpg')).exists():
-                thumb = 'thumbs/' + slug + '.jpg'
-        thumb_name = Path(thumb).name if thumb else ''
-        image = f'{SITE}/thumbs/{thumb_name}' if thumb_name and (THUMBS / 'thumbs' / thumb_name).exists() else None
+        image = image_url(slug, g.get('thumb') or '', THUMBS)
         desc = en_desc.get(slug) or g.get('desc') or ''
         rows.append((stars, price, g.get('title') or slug, slug, short(desc),
                      g.get('source') or '', image))
